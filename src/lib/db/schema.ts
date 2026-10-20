@@ -421,6 +421,19 @@ export const sportsMatches = pgTable(
     statusCheckedAt: timestamp("status_checked_at", { withTimezone: true }).notNull(),
     resultSummary: text("result_summary"),
     url: text("url"),
+    /** Canonical match fields (spec phase 1). */
+    competitionId: text("competition_id"),
+    season: text("season"),
+    /** men | women | youth | other (gender is kept for older code). */
+    category: text("category"),
+    venue: text("venue"),
+    /** Every provider's id for this match, e.g. {"football_data": "123", "openligadb": "456"}. */
+    providerIds: jsonb("provider_ids").$type<Record<string, string>>().notNull().default({}),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** Last time a provider with live status confirmed this status. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /** fixtures | status | final — how long this row's data stays trustworthy. */
+    freshnessPolicy: text("freshness_policy"),
     /** Creator-entered fixtures are private to that creator; provider fixtures are shared (null). */
     ownerId: text("owner_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
@@ -451,4 +464,59 @@ export const platformReferences = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (t) => [index("ref_user_idx").on(t.userId), index("ref_observed_idx").on(t.observedAt)],
+);
+
+// ---------- Sports entities (mirrors src/lib/domain/sports/seed; synced on every migrate) ----------
+
+export const sportsCatalog = pgTable("sports", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+});
+
+export const sportsCompetitions = pgTable("competitions", {
+  id: text("id").primaryKey(),
+  sport: text("sport").notNull(),
+  name: text("name").notNull(),
+  format: text("format").notNull(),
+  /** men | women | youth | other */
+  category: text("category").notNull(),
+  season: text("season"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sportsTeams = pgTable("teams", {
+  id: text("id").primaryKey(),
+  sport: text("sport").notNull(),
+  name: text("name").notNull(),
+  short: text("short").notNull(),
+  kind: text("kind").notNull(),
+  category: text("category").notNull(),
+  competitions: jsonb("competitions").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sportsPlayers = pgTable("players", {
+  id: text("id").primaryKey(),
+  sport: text("sport").notNull(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const entityAliases = pgTable(
+  "entity_aliases",
+  {
+    id: id(),
+    alias: text("alias").notNull(),
+    /** latin | deva */
+    script: text("script").notNull(),
+    entityType: text("entity_type", { enum: ["team", "player", "competition"] }).notNull(),
+    /** For ambiguous aliases: one row per candidate entity. */
+    entityId: text("entity_id").notNull(),
+    /** Weak = also an everyday word; counts only with a sports signal. */
+    weak: boolean("weak").notNull().default(false),
+    /** The alias points at several entities and needs context or the creator to decide. */
+    ambiguous: boolean("ambiguous").notNull().default(false),
+  },
+  (t) => [uniqueIndex("alias_entity_unique").on(t.alias, t.entityType, t.entityId), index("alias_lookup").on(t.alias)],
 );

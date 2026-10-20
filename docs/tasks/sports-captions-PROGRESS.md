@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 0 — Audit & plan (waiting for owner OK)
+**Current phase:** 2 — Match data providers (Phase 0 approved by owner 2026-10-20; Phase 1 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-20
 
@@ -158,3 +158,39 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 ## Open issues (need owner)
 - Owner OK on this plan (checkpoint).
 - Later: owner-created free keys (`CRICAPI_KEY`, `FOOTBALL_DATA_TOKEN`) and 2 GitHub repo secrets for the scheduler.
+
+---
+
+## Phase 1 — Domain model + entity resolution: DONE (2026-10-20)
+- **Seed files** (reviewable data, no logic): `src/lib/domain/sports/seed/{types,cricket,football}.ts`.
+  - Cricket:
+    - men's and women's national teams;
+    - all 10 IPL and 5 WPL franchises;
+    - MI Emirates, MI Cape Town and MI New York (the reason plain "MI" is ambiguous);
+    - 39 players with nicknames ("Thala", "Hitman", "King Kohli", "Virat bhai", "कोहली").
+  - Football: every 2026/27 Premier League club, the big LaLiga/Bundesliga/Serie A/Ligue 1/UCL clubs, ISL clubs, national teams and stars (CR7, R9, Messi…).
+  - Competitions: IPL, WPL, international men's and women's, World Cups, Asia Cup, PL, LaLiga, UCL, ISL…
+  - `~` marks weak aliases (everyday words). The `AMBIGUOUS_ALIASES` list (MI, King, United, City, Real, Ronaldo) carries per-candidate context clues.
+- `entities.ts` is now only an index over the seed files. Provider-name matching ignores club affixes ("FC Arsenal" = "Arsenal FC") and handles women's teams.
+- **Intent v2** (`intent.ts`):
+  - Intents: preview, prediction, analysis, reaction, recap, historical_highlight, meme, fan_opinion.
+  - Time: aaj, aaj raat/tonight, kal and parso (decided by tense, else ambiguous), last/next match, explicit dates, past years → historical.
+  - Also: competition, category (men/women/youth, mapping teams to their women's versions), language detection, per-field confidence, ambiguities, at most one targeted question.
+  - Common-word ambiguous aliases (real, city, united, king) need a sport-specific signal.
+- **Resolver v2** (`resolve.ts`):
+  - Never picks the nearest fixture; two candidates go to the selector, and only an explicit "next/last match" picks the nearest.
+  - Historical highlights never attach; recap, reaction and analysis need a match that has started; preview and prediction need one that hasn't.
+  - An unresolved ambiguous alias always goes to the selector.
+  - Competition filter.
+  - `writingStage`: a post scheduled after kick-off with an unknown result is written neutrally.
+  - Freshness: provider "live" is trusted for 20 minutes; "scheduled" data older than 48 hours becomes unknown.
+- **DB** (migration `0003_sports_entities`, additive):
+  - New tables: `sports`, `competitions`, `teams`, `players`, `entity_aliases` (alias, script, type, entity, weak, ambiguous), synced from the seed on every migrate.
+  - New `sports_matches` columns: `competition_id`, `season`, `category`, `venue`, `provider_ids`, `fetched_at`, `verified_at`, `freshness_policy`.
+- **Tests:** 159 unit tests passing. New `tests/sports-resolution.test.ts` covers every ambiguous case in the spec:
+  - MI; Man U vs United; Ronaldo CR7/R9;
+  - Ind vs Aus men's and women's in the same week; same teams twice in 7 days;
+  - the 2016 century; kal at 23:50 IST; the UTC/IST boundary;
+  - post after kick-off; postponed, cancelled and stale status;
+  - common-word aliases; seed sync.
+- **Open issue for Phase 2:** the same match from two providers must merge into one canonical row (otherwise it would look like "same teams twice").

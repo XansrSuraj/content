@@ -85,7 +85,7 @@ describe("stage", () => {
 describe("resolve", () => {
   const yesterday = match({ id: "past", startsAt: new Date("2026-10-19T08:00:00Z"), status: "finished", resultSummary: "India won by 5 wickets" });
   const tomorrow = match({ id: "next", startsAt: new Date("2026-10-21T08:00:00Z") });
-  const women = match({ id: "w", gender: "women", startsAt: new Date("2026-10-21T08:00:00Z") });
+  const women = match({ id: "w", gender: "women", homeTeamId: "cricket:ind_w", awayTeamId: "cricket:aus_w", startsAt: new Date("2026-10-21T08:00:00Z") });
   const all = [yesterday, tomorrow, women];
 
   it("picks the recap for past tense and the preview for future tense", () => {

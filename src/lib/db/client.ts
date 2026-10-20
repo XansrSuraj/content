@@ -40,6 +40,8 @@ async function migrateEmbedded(db: DB): Promise<void> {
   const { migrate } = await import("drizzle-orm/pglite/migrator");
   const count = migrationFileCount();
   await migrate(db as never, { migrationsFolder: MIGRATIONS });
+  const { syncSportsSeed } = await import("./sync-sports-seed");
+  await syncSportsSeed(db);
   holder.migratedCount = count;
 }
 

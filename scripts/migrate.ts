@@ -10,8 +10,11 @@ async function main() {
     const { migrate } = await import("drizzle-orm/node-postgres/migrator");
     const pool = new Pool({ connectionString: url, ssl: process.env.DATABASE_SSL === "false" ? undefined : { rejectUnauthorized: process.env.DATABASE_SSL_STRICT !== "false" } });
     await migrate(drizzle(pool), { migrationsFolder });
+    const schema = await import("../src/lib/db/schema");
+    const { syncSportsSeed } = await import("../src/lib/db/sync-sports-seed");
+    const seeded = await syncSportsSeed(drizzle(pool, { schema }) as never);
     await pool.end();
-    console.log("Postgres migrations applied.");
+    console.log(`Postgres migrations applied. Sports seed: ${seeded.teams} teams, ${seeded.players} players, ${seeded.aliases} aliases.`);
   } else {
     const { getDb, closeDb } = await import("../src/lib/db/client");
     await getDb(); // PGlite migrates on connect

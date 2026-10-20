@@ -23,6 +23,7 @@ export function toMatchRecord(r: MatchRow): MatchRecord {
     statusCheckedAt: r.statusCheckedAt,
     resultSummary: r.resultSummary,
     url: r.url,
+    competitionId: r.competitionId,
   };
 }
 
@@ -42,15 +43,28 @@ export interface MatchUpsert {
   statusCheckedAt: Date;
   resultSummary: string | null;
   url: string | null;
+  competitionId?: string | null;
+  season?: string | null;
+  venue?: string | null;
+  /** True when this provider reports live status (football-data.org, CricAPI), false for schedule-only feeds. */
+  verified?: boolean;
 }
 
 /** Shared provider fixtures: one row per provider match, updated in place. */
 export async function upsertMatches(db: DB, rows: MatchUpsert[]): Promise<number> {
   let n = 0;
-  for (const r of rows) {
+  for (const { verified, ...r } of rows) {
+    const now = new Date();
+    const canonical = {
+      category: r.gender,
+      providerIds: { [r.provider]: r.externalId },
+      fetchedAt: now,
+      verifiedAt: verified ? r.statusCheckedAt : null,
+      freshnessPolicy: r.status === "finished" ? "final" : r.status === "live" ? "status" : "fixtures",
+    };
     await db
       .insert(sportsMatches)
-      .values({ ...r, ownerId: null })
+      .values({ ...r, ...canonical, ownerId: null })
       .onConflictDoUpdate({
         target: [sportsMatches.provider, sportsMatches.externalId],
         set: {
@@ -65,7 +79,11 @@ export async function upsertMatches(db: DB, rows: MatchUpsert[]): Promise<number
           statusCheckedAt: r.statusCheckedAt,
           resultSummary: r.resultSummary,
           url: r.url,
-          updatedAt: new Date(),
+          competitionId: r.competitionId ?? null,
+          season: r.season ?? null,
+          venue: r.venue ?? null,
+          ...canonical,
+          updatedAt: now,
         },
       });
     n++;
