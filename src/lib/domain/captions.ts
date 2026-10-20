@@ -229,20 +229,33 @@ function fillModelDefaults(input: unknown): unknown {
   if (r.clarifyingQuestion === undefined) r.clarifyingQuestion = null;
   if (typeof r.topicSummary !== "string") r.topicSummary = "";
   if (!Array.isArray(r.platforms)) r.platforms = [];
-  r.platforms = (r.platforms as Record<string, unknown>[]).map((p) => ({
-    ...p,
-    options: Array.isArray(p?.options)
-      ? (p.options as Record<string, unknown>[]).map((o) => ({
+  r.platforms = (r.platforms as Record<string, unknown>[]).map((p) => {
+    const options = Array.isArray(p?.options)
+      ? (p.options as Record<string, unknown>[]).map((o, i) => ({
           title: "",
           description: "",
           caption: "",
           why: "",
           ...o,
+          kind: normalizeKind(o?.kind) ?? OPTION_KINDS[i] ?? o?.kind,
           hashtags: Array.isArray(o?.hashtags) ? o.hashtags : [],
         }))
-      : [],
-  }));
+      : [];
+    // Which option is recommended is a choice, not a fact: an unreadable value falls back to the first option.
+    const recommended = normalizeKind(p?.recommended) ?? (options[0]?.kind as OptionKind | undefined) ?? "original_improved";
+    return { ...p, options, recommended };
+  });
   return r;
+}
+
+/** "Original improved", "original-improved", "A" → "original_improved". */
+function normalizeKind(v: unknown): OptionKind | null {
+  if (typeof v !== "string") return null;
+  const k = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if ((OPTION_KINDS as readonly string[]).includes(k)) return k as OptionKind;
+  const byLetter: Record<string, OptionKind> = { a: "original_improved", b: "search_focused", c: "conversation_focused" };
+  if (byLetter[k]) return byLetter[k];
+  return OPTION_KINDS.find((x) => k.startsWith(x.split("_")[0])) ?? null;
 }
 
 /** A complete reply in the older shape (exactly 3 variants) is accepted rather than wasted. */

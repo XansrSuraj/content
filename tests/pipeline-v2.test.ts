@@ -115,3 +115,18 @@ describe("lenient model replies", () => {
     expect(CaptionFromModelSchema.safeParse(two).success).toBe(false);
   });
 });
+
+describe("normalised option kinds", () => {
+  it("reads 'Original improved', 'A' or 'search-focused' as the right kind", async () => {
+    const { CaptionFromModelSchema } = await import("@/lib/domain/captions");
+    const out = sampleModelOutput();
+    const p = out.platforms[0];
+    const messy = { ...out, platforms: [{ ...p, recommended: "Search focused", options: p.options.map((o, i) => ({ ...o, kind: ["A", "search-focused", "Conversation Focused"][i] })) }] };
+    const r = CaptionFromModelSchema.safeParse(messy);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.platforms[0].recommended).toBe("search_focused");
+      expect(r.data.platforms[0].options.map((o) => o.kind)).toEqual(["original_improved", "search_focused", "conversation_focused"]);
+    }
+  });
+});
