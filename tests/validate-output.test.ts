@@ -118,3 +118,16 @@ describe("repair loop", () => {
     expect(r.limitations.join(" ")).toMatch(/could not be verified/);
   });
 });
+
+describe("validator refinements from the sports eval", () => {
+  it("a question is not a result claim", () => {
+    expect(codes(resultWith("youtube", { title: "Arsenal vs Everton: who wins this one?", description: "My preview." }), ctx({ intent: parseSportsIntent("Arsenal vs Everton preview"), matchTeamIds: [] }))).toEqual([]);
+  });
+  it("the safe pass swaps another platform's words instead of leaving them", () => {
+    const r = resultWith("youtube", { title: "RCB vs MI preview reel", description: "Save this Reel. RCB vs MI kal." });
+    const safe = safeResult(r, validateResult(r, ctx()), caption);
+    expect(safe.platforms[0].options[0].title).toBe("RCB vs MI preview video");
+    expect(safe.platforms[0].options[0].description).not.toMatch(/reel/i);
+    expect(codes(safe).filter((c) => c === "platform_wording")).toEqual([]);
+  });
+});

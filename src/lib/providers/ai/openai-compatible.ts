@@ -129,7 +129,8 @@ async function structured<T>(
     const checked = json === undefined ? null : strict.safeParse(json);
     if (checked?.success) return { data: checked.data, inputTokens, outputTokens, model: out.model };
     const issues = checked && !checked.success ? checked.error.issues.slice(0, 8).map((i) => `- ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n") : "- The reply was not valid JSON.";
-    console.warn(`[openai-compatible] attempt ${attempt} failed validation (${out.truncated ? "truncated" : "invalid"})`);
+    // Field paths and rule names only — never caption content.
+    console.warn(`[openai-compatible] attempt ${attempt} failed validation (${out.truncated ? "truncated" : "invalid"}): ${issues.split("\n").slice(0, 3).join(" | ")}`);
     messages.push(
       { role: "assistant", content: out.content.slice(0, 12_000) || "(no content)" },
       { role: "user", content: `Your reply did not pass validation:\n${out.truncated ? "- It was cut off. Be more concise.\n" : ""}${issues}\nReturn the corrected JSON object only.` },

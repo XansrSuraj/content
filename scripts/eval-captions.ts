@@ -30,11 +30,75 @@ interface Case {
   title: string;
   language: "hinglish" | "hindi" | "english";
   turns: Turn[];
+  /** Sports cases: what a correct answer must (not) do. */
+  sports?: { expectMatch?: boolean; expectQuestion?: boolean; expectStage?: string; noResultClaim?: boolean };
 }
+
+// ---------- Sports fixtures seeded into the eval's in-memory DB (times relative to "now", IST calendar) ----------
+function istDay(offset: number, time: string): Date {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  const [y, m, d] = today.split("-").map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
+  const [hh, mm] = time.split(":").map(Number);
+  return new Date(Date.parse(`${day}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+05:30`));
+}
+const fx = (o: Record<string, unknown>) => ({
+  provider: "eval",
+  sport: "cricket",
+  competition: "IPL",
+  competitionId: "cricket:ipl",
+  gender: "men",
+  status: "scheduled",
+  statusSource: "provider",
+  statusCheckedAt: new Date(),
+  resultSummary: null,
+  url: null,
+  verified: true,
+  ...o,
+});
+const SPORTS_FIXTURES = () => [
+  fx({ externalId: "rcb-mi-next", homeTeamId: "cricket:rcb", awayTeamId: "cricket:mi", homeName: "Royal Challengers Bengaluru", awayName: "Mumbai Indians", startsAt: istDay(1, "19:30") }),
+  fx({ externalId: "rcb-mi-prev", homeTeamId: "cricket:rcb", awayTeamId: "cricket:mi", homeName: "Royal Challengers Bengaluru", awayName: "Mumbai Indians", startsAt: istDay(-1, "19:30"), status: "finished", resultSummary: "Royal Challengers Bengaluru won by 5 wickets" }),
+  fx({ externalId: "ind-aus-w", competition: "Australia Women tour of India", competitionId: "cricket:intl_w", gender: "women", homeTeamId: "cricket:ind_w", awayTeamId: "cricket:aus_w", homeName: "India Women", awayName: "Australia Women", startsAt: istDay(1, "13:30") }),
+  fx({ externalId: "ind-aus-next", competition: "Australia tour of India", competitionId: "cricket:intl", homeTeamId: "cricket:ind", awayTeamId: "cricket:aus", homeName: "India", awayName: "Australia", startsAt: istDay(1, "09:30") }),
+  fx({ externalId: "ind-aus-prev", competition: "Australia tour of India", competitionId: "cricket:intl", homeTeamId: "cricket:ind", awayTeamId: "cricket:aus", homeName: "India", awayName: "Australia", startsAt: istDay(-1, "09:30"), status: "finished", resultSummary: "Australia won by 3 wickets" }),
+  fx({ externalId: "ind-pak", competition: "Asia Cup", competitionId: "cricket:asiacup", homeTeamId: "cricket:ind", awayTeamId: "cricket:pak", homeName: "India", awayName: "Pakistan", startsAt: istDay(1, "19:30"), status: "postponed" }),
+  fx({ externalId: "ars-eve", sport: "football", competition: "Premier League", competitionId: "football:pl", homeTeamId: "football:arsenal", awayTeamId: "football:everton", homeName: "Arsenal FC", awayName: "Everton FC", startsAt: istDay(2, "19:30"), statusSource: "schedule_only", verified: false }),
+  fx({ externalId: "rma-bar", sport: "football", competition: "LaLiga", competitionId: "football:laliga", homeTeamId: "football:realmadrid", awayTeamId: "football:barcelona", homeName: "Real Madrid", awayName: "FC Barcelona", startsAt: istDay(-1, "00:30"), status: "finished", statusSource: "schedule_only", verified: false, resultSummary: "Real Madrid 2–1 FC Barcelona (full time, community data)" }),
+  fx({ externalId: "bay-psg", sport: "football", competition: "UEFA Champions League", competitionId: "football:ucl", homeTeamId: "football:bayern", awayTeamId: "football:psg", homeName: "FC Bayern München", awayName: "Paris Saint-Germain", startsAt: istDay(-1, "00:30"), status: "finished", resultSummary: "FC Bayern München 1–1 Paris Saint-Germain (full time)" }),
+];
+const IG_YT = { platform: "instagram_reels" as const, extraPlatforms: ["youtube_shorts" as const] };
+
+const SPORTS_CASES: Case[] = [
+  { id: "s-ipl-preview", title: "IPL preview — RCB vs MI tomorrow (Hinglish, IG + Shorts)", language: "hinglish", sports: { expectMatch: true, expectStage: "upcoming", noResultClaim: true },
+    turns: [{ message: "RCB vs MI kal khelenge, mera preview reel. Kohli ki form pe baat ki hai", context: { ...IG_YT, language: "hinglish" } }, { message: "Make it shorter.", expect: ["shorter"] }] },
+  { id: "s-ipl-recap-hi", title: "IPL recap — yesterday, verified result (Hindi)", language: "hindi", sports: { expectMatch: true, expectStage: "completed" },
+    turns: [{ message: "आरसीबी और एमआई का कल जो मैच हुआ, उसकी हाइलाइट्स पर मेरा रिएक्शन वीडियो", context: { platform: "instagram_reels", language: "hindi" } }] },
+  { id: "s-women-en", title: "Women's ODI preview (English)", language: "english", sports: { expectMatch: true, expectStage: "upcoming", noResultClaim: true },
+    turns: [{ message: "India vs Australia women's ODI preview for tomorrow, my players to watch", context: { platform: "instagram_reels", language: "english" } }] },
+  { id: "s-historical", title: "Historical highlight — Kohli 2016 (Hinglish)", language: "hinglish", sports: { expectMatch: false, noResultClaim: false },
+    turns: [{ message: "Kohli ki 2016 wali century yaad hai? Throwback edit bana diya", context: { platform: "instagram_reels", language: "hinglish" } }] },
+  { id: "s-mi-ambiguous", title: "Ambiguous 'MI' (Hinglish)", language: "hinglish", sports: { expectQuestion: true, noResultClaim: true },
+    turns: [{ message: "MI ka match kal, preview reel", context: { platform: "instagram_reels", language: "hinglish" } }] },
+  { id: "s-kal-ambiguous", title: "Ambiguous 'kal' — India vs Australia (Hinglish)", language: "hinglish", sports: { expectMatch: false, noResultClaim: true },
+    turns: [{ message: "India Australia kal match pe meri baat", context: { platform: "instagram_reels", language: "hinglish" } }] },
+  { id: "s-epl-preview", title: "Premier League preview — Arsenal vs Everton (English, YouTube)", language: "english", sports: { expectMatch: true, expectStage: "upcoming", noResultClaim: true },
+    turns: [{ message: "Arsenal vs Everton preview: who wins this one?", context: { platform: "youtube", language: "english" } }] },
+  { id: "s-clasico", title: "El Clásico reaction — community result (Hinglish)", language: "hinglish", sports: { expectMatch: true, expectStage: "completed", noResultClaim: true },
+    turns: [{ message: "Real vs Barca El Clasico mein jo hua, mera reaction", context: { platform: "instagram_reels", language: "hinglish" } }] },
+  { id: "s-ronaldo-hi", title: "Ronaldo free kick (Hindi)", language: "hindi", sports: { expectMatch: false },
+    turns: [{ message: "रोनाल्डो का अल नासर के लिए फ्री किक, सिउउ! फुटबॉल का जादू", context: { platform: "instagram_reels", language: "hindi" } }] },
+  { id: "s-post-after-kickoff", title: "Scheduled after kick-off — neutral wording (Hinglish)", language: "hinglish", sports: { expectMatch: true, expectStage: "unknown", noResultClaim: true },
+    turns: [{ message: "RCB vs MI kal ka match preview", context: { platform: "instagram_reels", language: "hinglish", publishAt: istDay(2, "10:00").toISOString() } }] },
+  { id: "s-postponed", title: "Postponed — India vs Pakistan (English)", language: "english", sports: { expectMatch: true, expectStage: "postponed", noResultClaim: true },
+    turns: [{ message: "India vs Pakistan tomorrow, my preview video", context: { platform: "instagram_reels", language: "english" } }] },
+  { id: "s-ucl-analysis", title: "UCL analysis — YouTube long (English)", language: "english", sports: { expectMatch: true, expectStage: "completed" },
+    turns: [{ message: "Bayern vs PSG Champions League analysis — tactics breakdown from last night", context: { platform: "youtube", language: "english" } }] },
+];
 
 const PASTED = "Aaj ka vlog: maine ghar pe pehli baar pizza banaya 🍕\nOven nahi tha toh kadhai mein try kiya. Result dekh ke batao kaisa laga!";
 
-const CASES: Case[] = [
+const BASE_CASES: Case[] = [
   {
     id: "budget-phone",
     title: "Budget phone review (Hinglish)",
@@ -110,6 +174,8 @@ const CASES: Case[] = [
   },
 ];
 
+const CASES: Case[] = [...BASE_CASES, ...SPORTS_CASES];
+
 // ---------- Automatic checks ----------
 
 const EMOJI = /\p{Extended_Pictographic}/u;
@@ -184,12 +250,23 @@ async function main() {
   const { aiStatus } = await import("../src/lib/config");
 
   const db = await getDb();
+  const { upsertMatches } = await import("../src/lib/repo/sports");
+  const { validateResult } = await import("../src/lib/domain/validate-output");
+  const { parseSportsIntent } = await import("../src/lib/domain/sports/intent");
+  await upsertMatches(db, SPORTS_FIXTURES() as never);
+  const paceMs = Number(process.env.EVAL_PACE_MS ?? 0);
   const [u] = await db.insert(users).values({ email: `eval-${Date.now()}@eval.local` }).returning();
   const user = { id: u.id, email: u.email, role: u.role, isDemo: false };
   const provider = getCaptionProvider();
   const status = aiStatus();
   const providerLabel =
-    status.kind === "live" ? `Anthropic (${status.model})` : status.kind === "local" ? `Ollama (${status.model}) — local development model` : "Template preview (no AI)";
+    status.kind === "live"
+      ? `Anthropic (${status.model})`
+      : status.kind === "open"
+        ? `${status.host} (${status.model})`
+        : status.kind === "local"
+          ? `Ollama (${status.model}) — local development model`
+          : "Template preview (no AI)";
   console.log(`Provider: ${providerLabel}`);
 
   const logs: { c: Case; turns: TurnLog[] }[] = [];
@@ -207,6 +284,7 @@ async function main() {
         const msg = e.kind === "provider" ? `${e.code}: ${e.message}` : e.kind;
         console.log(`FAILED (${msg}) ${latencyMs}ms`);
         turns.push({ message: t.message, ok: false, error: msg, latencyMs, flags: [], constraintResults: [] });
+        if (paceMs) await new Promise((ok) => setTimeout(ok, paceMs));
         continue;
       }
       conversationId = res.value.conversationId;
@@ -231,9 +309,28 @@ async function main() {
         }
       }
       const flags = qualityFlags(r, c, t.message);
+      // Sports: re-run the deterministic validator on the final answer and check the expectations.
+      const sp = res.value.assistantMessage.sports;
+      if (c.sports) {
+        const exp = c.sports;
+        if (exp.expectMatch !== undefined && Boolean(sp?.match) !== exp.expectMatch) flags.push(`match ${sp?.match ? "attached" : "not attached"} (expected ${exp.expectMatch ? "attached" : "none"})`);
+        if (exp.expectQuestion && !sp?.question) flags.push("expected one targeted question, got none");
+        if (exp.expectStage && sp?.match && sp.match.stage !== exp.expectStage) flags.push(`stage ${sp.match.stage} (expected ${exp.expectStage})`);
+        const issues = validateResult(r, {
+          sourceText: c.turns.map((x) => x.message).join("\n"),
+          evidenceText: JSON.stringify(sp?.match ?? {}),
+          intent: parseSportsIntent(c.turns.map((x) => x.message).join("\n")),
+          matchTeamIds: [],
+          stage: (sp?.match?.stage as never) ?? null,
+          resultVerified: Boolean(sp?.match?.stage === "completed" && sp.match.statusSource === "provider"),
+          language: c.language,
+        }).filter((i) => i.code !== "extra_entity");
+        for (const i of issues.slice(0, 4)) flags.push(`validator: ${i.platform}/${i.kind}/${i.field}: ${i.detail}`);
+      }
       console.log(`ok ${latencyMs}ms${flags.length ? ` · ${flags.length} flag(s)` : ""}${constraintResults.length ? ` · ${constraintResults.join("; ")}` : ""}`);
-      turns.push({ message: t.message, ok: true, latencyMs, mode: res.value.assistantMessage.mode ?? undefined, result: r, flags, constraintResults, context: ctx });
+      turns.push({ message: t.message, ok: true, latencyMs, mode: res.value.assistantMessage.mode ?? undefined, result: r, flags, constraintResults, context: ctx, sports: sp } as TurnLog);
       prev = r;
+      if (paceMs) await new Promise((ok) => setTimeout(ok, paceMs));
     }
     logs.push({ c, turns });
   }
@@ -268,8 +365,21 @@ async function main() {
       const r = t.result;
       lines.push("", `*Mode: ${t.mode} · ${(t.latencyMs / 1000).toFixed(1)}s · context: platform=${t.context?.platform}, language=${t.context?.language}, tone=${t.context?.tone}, length=${t.context?.length}, emoji=${t.context?.emoji}*`);
       lines.push("", `**Summary:** ${r.topicSummary}`);
-      for (const v of r.variants) {
-        lines.push("", `**Option ${v.id} — ${v.approach}${v.id === r.recommendedVariantId ? " (recommended)" : ""}**`, "", "```", v.caption, v.hashtags.join(" "), "```");
+      const sp = (t as TurnLog & { sports?: unknown }).sports as { match?: { homeName: string; awayName: string; stage: string } | null; question?: { alias: string | null } | null } | undefined;
+      if (sp?.match) lines.push("", `**Match:** ${sp.match.homeName} vs ${sp.match.awayName} · stage ${sp.match.stage}`);
+      if (sp?.question) lines.push("", `**Question asked:** which "${sp.question.alias}"?`);
+      if (r.platforms.length) {
+        for (const p of r.platforms) {
+          lines.push("", `#### ${p.platform}`);
+          for (const o of p.options) {
+            const body = [o.title && `TITLE: ${o.title}`, o.description && `DESCRIPTION: ${o.description}`, o.caption].filter(Boolean).join("\n");
+            lines.push("", `**${o.kind}${o.kind === p.recommended ? " (recommended)" : ""}** — ${o.why}`, "", "```", body, o.hashtags.join(" "), "```");
+          }
+        }
+      } else {
+        for (const v of r.variants) {
+          lines.push("", `**Option ${v.id} — ${v.approach}${v.id === r.recommendedVariantId ? " (recommended)" : ""}**`, "", "```", v.caption, v.hashtags.join(" "), "```");
+        }
       }
       lines.push("", `**Why recommended:** ${r.recommendationReason}`);
       lines.push("", `**Hooks:** ${r.hooks.map((h) => `“${h}”`).join(" · ") || "—"}`);

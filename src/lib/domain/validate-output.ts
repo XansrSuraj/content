@@ -112,7 +112,9 @@ export function validateResult(result: CaptionResult, ctx: ValidationContext): V
             const extraPlayer = named.playerIds.find((pl) => !allowedPlayers.has(pl));
             if (extraTeam || extraPlayer) push("extra_entity", field, `names ${extraTeam ?? extraPlayer}, which is not in the video`, s);
           }
-          if (!resultAllowed && (RESULT_CLAIM.test(s) || (ctx.intent.sport && SCORE_LIKE.test(s) && !SCORE_LIKE.test(ctx.sourceText)))) {
+          // A question ("who wins this one?", "kaun jeetega?") is not a result claim.
+          const question = /\?\s*$/.test(s) && /\b(who|which|will|kaun|kis|kya)\b|कौन|क्या/i.test(s);
+          if (!resultAllowed && !question && (RESULT_CLAIM.test(s) || (ctx.intent.sport && SCORE_LIKE.test(s) && !SCORE_LIKE.test(ctx.sourceText)))) {
             push("result_claim", field, "states a result or score that is not verified", s);
           }
           if ((ctx.stage === "unknown" || ctx.stage === "upcoming") && LIVE_CLAIM.test(s) && !LIVE_CLAIM.test(ctx.sourceText)) {
@@ -152,6 +154,40 @@ export function repairInstructions(issues: ValidationIssue[]): string[] {
   return lines.slice(0, 12);
 }
 
+/** Neutral swaps for another platform's words; sentences that still break the rule are dropped. */
+const SWAPS: Record<string, [RegExp, string][]> = {
+  youtube: [
+    [/\breels?\b/gi, "video"],
+    [/\bswipe up\b/gi, "watch"],
+  ],
+  instagram: [
+    [/\bsubscribe\b/gi, "follow"],
+    [/\bshorts\b/gi, "reels"],
+  ],
+  facebook: [
+    [/\bsubscribe\b/gi, "follow"],
+    [/\bshorts\b/gi, "videos"],
+  ],
+  tiktok: [
+    [/\breels?\b/gi, "video"],
+    [/\bsubscribe\b/gi, "follow"],
+    [/\bshorts\b/gi, "videos"],
+  ],
+};
+
+function toPlatformWording(platform: string, text: string): string {
+  const family = platform.split("_")[0];
+  let out = text;
+  for (const [re, to] of SWAPS[family] ?? []) out = out.replace(re, to);
+  // Facebook posts (not Reels) and Instagram posts must not talk about Reels either.
+  if (platform === "facebook_post" || platform === "instagram_post") out = out.replace(/\breels?\b/gi, "post");
+  const forbidden = adapterFor(platform).forbiddenWording;
+  return sentences(out)
+    .filter((s) => !forbidden.some((re) => re.test(s)))
+    .join(" ")
+    .trim();
+}
+
 const SENTENCE_CODES: IssueCode[] = ["extra_entity", "result_claim", "timing_claim", "unsupported_number", "banned_claim", "language_mix"];
 
 /**
@@ -163,7 +199,7 @@ export function safeResult(result: CaptionResult, issues: ValidationIssue[], fal
   const fix = (platform: string, kind: ResultOption["kind"], field: "title" | "description" | "caption", text: string) => {
     if (!text) return text;
     const kept = sentences(text).filter((s) => !bad.has(`${platform}|${kind}|${field}|${s}`));
-    let out = kept.join(" ").trim();
+    let out = toPlatformWording(platform, kept.join(" ").trim());
     const limit = adapterFor(platform).limits[field];
     if (limit && out.length > limit.max) out = out.slice(0, limit.max - 1).trimEnd() + "…";
     return out;
@@ -175,7 +211,11 @@ export function safeResult(result: CaptionResult, issues: ValidationIssue[], fal
       const next = { ...o };
       for (const f of fields) next[f] = fix(p.platform, o.kind, f, o[f]);
       // Never leave a required field empty: fall back to the creator's own words.
-      for (const f of fields) if (!next[f].trim()) next[f] = f === "title" ? fallbackText.split(/\r?\n/)[0].slice(0, 100) : fallbackText.slice(0, 2000);
+      for (const f of fields) {
+        if (next[f].trim()) continue;
+        const own = toPlatformWording(p.platform, fallbackText) || fallbackText;
+        next[f] = f === "title" ? own.split(/\r?\n/)[0].slice(0, 100) : own.slice(0, 2000);
+      }
       const seen = new Set<string>();
       next.hashtags = o.hashtags.filter((t) => {
         const k = t.toLowerCase();

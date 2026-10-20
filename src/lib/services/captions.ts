@@ -66,6 +66,7 @@ function compactResult(r: CaptionResult): string {
 
 /** Targeted repair attempts after the first answer (bounded so free quotas last). */
 const MAX_REPAIRS = 2;
+const REPAIR_CODES = new Set(["result_claim", "unsupported_number", "extra_entity", "banned_claim", "timing_claim", "missing_field"]);
 
 export function historyFromMessages(msgs: Message[]): CaptionTurn[] {
   const turns: CaptionTurn[] = [];
@@ -225,7 +226,10 @@ ${sports.trendTerms}`,
   let bestIssues = best.platforms.length ? validateResult(best, vctx) : [];
   const repairable = output.mode === "live_ai" || output.mode === "open_model";
   let repairs = 0;
-  for (let attempt = 0; attempt < MAX_REPAIRS && repairable && bestIssues.length && !opts.signal?.aborted; attempt++) {
+  // Only fact/claim problems are worth model tokens (free tier: ~8K tokens/min shared by everyone);
+  // length, hashtags, platform words and script mix are fixed deterministically by the safe pass.
+  const needsModel = (issues: typeof bestIssues) => issues.some((i) => REPAIR_CODES.has(i.code));
+  for (let attempt = 0; attempt < MAX_REPAIRS && repairable && needsModel(bestIssues) && !opts.signal?.aborted; attempt++) {
     repairs++;
     const repairStarted = Date.now();
     try {
