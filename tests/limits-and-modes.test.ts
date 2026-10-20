@@ -56,7 +56,10 @@ describe("demo / live separation", () => {
   it("source status never claims a connection that is not configured", () => {
     const cfg = readConfig({} as unknown as NodeJS.ProcessEnv);
     expect(sourceStatus("youtube_most_popular_in", cfg).status).toBe("needs_config");
-    expect(sourceStatus("wikimedia_top_in", cfg).status).toBe("needs_config");
+    // Keyless sources are on by default and say so; keyed ones need their key.
+    expect(sourceStatus("wikimedia_top_in", cfg).status).toBe("enabled");
+    expect(sourceStatus("apple_music_top_in", cfg).status).toBe("enabled");
+    expect(sourceStatus("wikimedia_top_in", readConfig({ SOURCE_WIKIMEDIA_ENABLED: "false" } as unknown as NodeJS.ProcessEnv)).status).toBe("disabled");
     expect(sourceStatus("instagram_hashtag", cfg).status).toBe("unavailable");
     expect(sourceStatus("trending_audio", cfg).status).toBe("unavailable");
   });

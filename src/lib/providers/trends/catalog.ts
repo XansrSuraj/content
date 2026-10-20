@@ -28,7 +28,7 @@ export const SOURCES: SourceInfo[] = [
     kind: "trend_topics",
     coverage:
       "Most-read Wikipedia articles by readers in India, per day, across all Wikipedia language editions. Shows reading interest — not Instagram, YouTube, Facebook or TikTok popularity.",
-    requirements: ["SOURCE_WIKIMEDIA_ENABLED=true", "WIKIMEDIA_USER_AGENT with a contact URL or email (Wikimedia API etiquette)"],
+    requirements: ["On by default (no key). SOURCE_WIKIMEDIA_ENABLED=false turns it off."],
     policyNotes: [
       "Public Wikimedia REST API; no key. Respect the User-Agent policy and rate limits.",
       "Counts are rounded up by Wikimedia for privacy (views_ceil). Shown as-is with that label.",
@@ -99,10 +99,10 @@ export const SOURCES: SourceInfo[] = [
     kind: "search_interest",
     coverage:
       "About 10 Google Search queries in India with a recent surge in interest, from Google Trends' official “Trending now” RSS export, with Google's approximate traffic bucket. Search interest only — not Instagram, YouTube, Facebook or TikTok popularity, and never used to mark a hashtag as observed.",
-    requirements: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true (no key, no account)"],
+    requirements: ["On by default (no key, no account). SOURCE_GOOGLE_TRENDS_RSS_ENABLED=false turns it off."],
     policyNotes: [
       "Google: “You can use any information from Google Trends, subject to the Google Terms of Service.” Reuse requires the citation “Data source: Google Trends”.",
-      "Fetched anonymously (no cookies) at most every 2 hours; robots.txt does not disallow the feed. Stored rows expire after 7 days.",
+      "Fetched anonymously (no cookies) at most every 30 minutes; robots.txt does not disallow the feed. Stored rows expire after 7 days.",
       "Google's terms do not clearly address commercial display at scale — get legal review before launch.",
     ],
     docsUrl: "https://support.google.com/trends/answer/3076011",
@@ -120,13 +120,28 @@ export const SOURCES: SourceInfo[] = [
     ingestible: false,
   },
   {
+    key: "apple_music_top_in",
+    name: "Top songs in India (Apple Music chart)",
+    platform: "apple_music",
+    kind: "audio",
+    coverage:
+      "The 50 most-played songs on Apple Music in India, from Apple's public chart feed, refreshed hourly. A music-streaming chart — not Instagram Reels or YouTube Shorts audio popularity.",
+    requirements: ["On by default (no key, no account). SOURCE_APPLE_MUSIC_ENABLED=false turns it off."],
+    policyNotes: [
+      "Apple's public marketing RSS feed (rss.marketingtools.apple.com); each song links back to Apple Music.",
+      "A chart grants no rights to use a song. Creators should pick songs from the platform's own in-app music library.",
+    ],
+    docsUrl: "https://rss.marketingtools.apple.com/",
+    ingestible: true,
+  },
+  {
     key: "trending_audio",
-    name: "Trending audio / music",
+    name: "In-app trending audio (Reels / Shorts)",
     platform: "multi",
     kind: "audio",
-    coverage: "Not connected. No licensed source for trending sounds is configured.",
-    requirements: ["A licensed music/audio trend data provider with display and commercial rights"],
-    policyNotes: ["Platform in-app audio charts are not exposed through permitted APIs."],
+    coverage: "Not connected. Instagram and YouTube do not offer their in-app trending-audio lists through any permitted API.",
+    requirements: ["Not offered by the platforms"],
+    policyNotes: ["Scraping in-app audio charts breaks platform terms and is not implemented."],
     docsUrl: null,
     ingestible: false,
   },
@@ -151,12 +166,14 @@ export function sourceStatus(key: string, cfg: AppConfig): { status: SourceStatu
       const missing: string[] = [];
       if (!cfg.sources.wikimediaEnabled) missing.push("SOURCE_WIKIMEDIA_ENABLED=true");
       if (!cfg.sources.wikimediaUserAgent) missing.push("WIKIMEDIA_USER_AGENT");
-      return { status: missing.length ? "needs_config" : "enabled", missing };
+      return { status: missing.length ? "disabled" : "enabled", missing };
     }
     case "google_trends_rss_in":
       return cfg.sources.googleTrendsRssEnabled
         ? { status: "enabled", missing: [] }
-        : { status: "needs_config", missing: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true"] };
+        : { status: "disabled", missing: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true"] };
+    case "apple_music_top_in":
+      return cfg.sources.appleMusicEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_APPLE_MUSIC_ENABLED=true"] };
     case "youtube_most_popular_in":
       return cfg.sources.youtubeApiKeyPresent
         ? { status: "enabled", missing: [] }

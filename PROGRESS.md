@@ -126,7 +126,18 @@ Keep this file current so work can resume across sessions.
 - **Not translated (intentional):** admin pages; source catalog descriptions; AI/template output metadata (written by the model or the template).
 - **Tests:** 102 unit; 8/8 E2E (with `ts_lang=english` pinned through `e2e/fixtures.ts`), including a new test that switches English → Hindi → Hinglish and checks there is no horizontal overflow. Two E2E checks now accept either "trend source off" or real trend data, because the result depends on the env.
 
+## Session 8 (2026-10-20): every free source on, self-refreshing
+- **On by default, no keys:** Google Trends RSS, Wikipedia pageviews (India) and a new **Apple Music "Top songs in India"** connector (`src/lib/providers/trends/apple-music.ts`, Apple's public marketing RSS). Each can be turned off with `SOURCE_*_ENABLED=false`. Under `NODE_ENV=test` they default off, so unit tests never hit the network.
+- **Wikipedia User-Agent:** Wikimedia asks for a contact URL, so it defaults to `TrendSaathi/1.0 (<APP_URL>; <repo URL>)`. No email is used.
+- **Fresh without cron:** the app layout calls `after(() => refreshIfStale(db, …, 20s))`, so every page view refreshes any source past its interval (Google 30 min, Wikipedia 60 min, Apple 60 min), in parallel. Concurrent runs are shared, and a failed source retries after 5 minutes. The Trending page and captions also refresh before reading, with a 6 s limit.
+- **Trending now:** Google searches first, then Wikipedia's top 24 in rank order, plus a "Top songs in India" chart (a sticky sidebar on xl screens) with Apple Music links. It's labelled as a streaming chart, not Reels/Shorts audio, and tells creators to pick songs from the platform's own music library.
+- **Settings:** sources that no permitted free API can provide (Instagram hashtags, TikTok, Facebook, Google Trends API, in-app Reels/Shorts audio) are grouped under "Not possible without platform approval", with the reason.
+- **Demo:** enabled in production through Render env (`TRENDSAATHI_DEMO_MODE` + `TRENDSAATHI_ALLOW_DEMO_IN_PRODUCTION`). It stays labelled and isolated to demo accounts.
+- **Still keyed:** the YouTube Most Popular chart needs a free `YOUTUBE_API_KEY` (Google Cloud). There is no keyless official route, and the keyless "Invidious/Piped" mirrors scrape YouTube, so they are not used.
+- **Tests:** 105 unit (new `tests/apple-music.test.ts`), 9/9 E2E (new `e2e/sources.spec.ts`).
+
 ## Next steps
+- Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.
 - Set `ADMIN_EMAILS` on Render to the owner's email.
 - Optional: make the GitHub repo private; add GitHub Actions secrets for background trend refresh.
 - Multi-platform pack (Reels caption + Shorts title/description in one go) once generation is faster.

@@ -65,6 +65,7 @@ export interface AppConfig {
     wikimediaUserAgent: string | null;
     youtubeApiKeyPresent: boolean;
     googleTrendsRssEnabled: boolean;
+    appleMusicEnabled: boolean;
     /** User-Agent for keyless public feeds. */
     userAgent: string;
   };
@@ -73,6 +74,7 @@ export interface AppConfig {
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const isProduction = env.NODE_ENV === "production";
+  const keylessDefault = env.NODE_ENV !== "test";
   const demoRequested = bool(env.TRENDSAATHI_DEMO_MODE, !isProduction);
   // Production never runs demo auth unless an operator opts in twice.
   const publicDemoAllowed = bool(env.TRENDSAATHI_ALLOW_DEMO_IN_PRODUCTION);
@@ -148,10 +150,13 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       authPerIpPer15Min: int(env.AUTH_ATTEMPTS_PER_IP_PER_15_MIN, 20),
     },
     sources: {
-      wikimediaEnabled: bool(env.SOURCE_WIKIMEDIA_ENABLED, false),
-      wikimediaUserAgent: env.WIKIMEDIA_USER_AGENT?.trim() || null,
+      // Keyless public feeds are on by default (off under test so unit tests never hit the network).
+      wikimediaEnabled: bool(env.SOURCE_WIKIMEDIA_ENABLED, keylessDefault),
+      // Wikimedia asks for a User-Agent with a contact URL; the app URL and the public repo serve as contact.
+      wikimediaUserAgent: env.WIKIMEDIA_USER_AGENT?.trim() || `TrendSaathi/1.0 (${env.APP_URL || "https://trendsaathi.onrender.com"}; https://github.com/XansrSuraj/content)`,
       youtubeApiKeyPresent: Boolean(env.YOUTUBE_API_KEY?.trim()),
-      googleTrendsRssEnabled: bool(env.SOURCE_GOOGLE_TRENDS_RSS_ENABLED, false),
+      googleTrendsRssEnabled: bool(env.SOURCE_GOOGLE_TRENDS_RSS_ENABLED, keylessDefault),
+      appleMusicEnabled: bool(env.SOURCE_APPLE_MUSIC_ENABLED, keylessDefault),
       userAgent: env.TRENDSAATHI_USER_AGENT?.trim() || `TrendSaathi/0.1 (+${env.APP_URL || "http://localhost:3000"})`,
     },
     ingestSecretPresent: (env.INGEST_SECRET?.length ?? 0) >= 32,

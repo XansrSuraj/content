@@ -46,7 +46,7 @@ function ymd(d: Date) {
 
 export class WikimediaTopInConnector implements TrendSourceConnector {
   key = "wikimedia_top_in";
-  minIntervalMinutes = 360;
+  minIntervalMinutes = 60;
   constructor(
     private userAgent: string,
     private country = "IN",

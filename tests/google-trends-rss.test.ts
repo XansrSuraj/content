@@ -102,10 +102,12 @@ describe("Google Trends RSS connector", () => {
     }
   });
 
-  it("is opt-in and needs no key", () => {
-    expect(sourceStatus("google_trends_rss_in", readConfig({} as unknown as NodeJS.ProcessEnv)).status).toBe("needs_config");
+  it("is on by default, needs no key, and can be turned off", () => {
+    expect(sourceStatus("google_trends_rss_in", readConfig({} as unknown as NodeJS.ProcessEnv)).status).toBe("enabled");
     expect(
-      sourceStatus("google_trends_rss_in", readConfig({ SOURCE_GOOGLE_TRENDS_RSS_ENABLED: "true" } as unknown as NodeJS.ProcessEnv)).status,
-    ).toBe("enabled");
+      sourceStatus("google_trends_rss_in", readConfig({ SOURCE_GOOGLE_TRENDS_RSS_ENABLED: "false" } as unknown as NodeJS.ProcessEnv)).status,
+    ).toBe("disabled");
+    // Unit tests never hit the network: keyless sources default off under NODE_ENV=test.
+    expect(sourceStatus("google_trends_rss_in", readConfig({ NODE_ENV: "test" } as unknown as NodeJS.ProcessEnv)).status).toBe("disabled");
   });
 });

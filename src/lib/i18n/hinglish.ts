@@ -384,6 +384,11 @@ export const hinglish: Dict = {
     makeCaption: "Caption banao",
     makeBrief: "Brief banao",
     hidden: (n: number) => `Hinsa ya haadse se jude ${n} trend yahan chhupaye gaye hain. In par content banane se pehle soch-samajh kar faisla lena zaroori hai.`,
+    musicTitle: "India ke top songs",
+    musicLead: "Apple Music par India mein abhi sabse zyada bajne wale songs. Ye streaming chart hai, Reels/Shorts audio nahi — song tabhi use karo jab wo app ki apni music library mein ho.",
+    musicSource: "Data source: Apple Music",
+    musicOpen: "Apple Music mein kholo",
+    musicEmpty: "Song chart abhi load nahi hua. Ye apne aap refresh hota hai — ek minute mein dobara dekho.",
     prefill: (topic: string) => `Trend: ${topic}\nMera video: `,
   },
   opps: {
@@ -443,7 +448,7 @@ export const hinglish: Dict = {
       high: "High: kai dinon mein do ya zyada sources",
     },
     audioTitle: "Trending audio & posting time",
-    audioText: "Trending audio connect nahi hai — koi licensed audio source set nahi, isliye audio list nahi dikhti. Koi universal “best posting time” nahi hota; Published page par aapka apna posting log aapke patterns dikhata hai.",
+    audioText: "Instagram aur YouTube apna in-app trending audio kisi allowed API se nahi dete. Music ke liye Abhi trending page par “India ke top songs” (Apple Music chart) dekho. Koi universal “best posting time” nahi hota; Published page par aapka posting log aapke apne patterns dikhata hai.",
   },
   oppDetail: {
     all: "Saare ideas",
@@ -618,6 +623,8 @@ export const hinglish: Dict = {
     manualNote: "Aapne khud daala · platform data nahi.",
   },
   settings: {
+    notPossibleTitle: (n: number) => `Platform approval ke bina possible nahi (${n})`,
+    notPossibleText: "Ye platforms ye data kisi allowed, free API se nahi dete. Scraping unke terms todta hai aur block ho jaata hai, isliye TrendSaathi ye nahi karta. Upar wale free alternatives use hote hain.",
     title: "Settings",
     deletedHistory: "Aapki history delete ho gayi.",
     confirmError: "Confirm karne ke liye capital mein DELETE likho.",

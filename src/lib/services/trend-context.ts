@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
 import { config } from "@/lib/config";
 import type { DB } from "@/lib/db/client";
 import { sourceObservations, sources, type TrendContextItem } from "@/lib/db/schema";
-import { buildConnector, runIngestion } from "@/lib/jobs/ingest";
+import { INGESTIBLE_KEYS, buildConnector, runIngestion } from "@/lib/jobs/ingest";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 import { STOPWORDS } from "@/lib/providers/ai/template";
 import { needsReview } from "@/lib/providers/trends/filters";
@@ -17,7 +17,7 @@ import { needsReview } from "@/lib/providers/trends/filters";
 const CONTEXT_SOURCES = ["google_trends_rss_in", "wikimedia_top_in"];
 const DEMO_SOURCES = ["demo_sample"];
 const MAX_AGE_HOURS = 48;
-const REFRESH_AFTER_MINUTES = 120;
+const WIKI_LIMIT = 24;
 
 export function tokens(text: string): string[] {
   return [
@@ -84,19 +84,45 @@ export function matchTrends(text: string, candidates: CandidateObservation[], li
   return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((s) => s.item);
 }
 
-/** Refreshes the Google Trends feed when stale. Bounded by a short timeout so captions are never blocked for long. */
-export async function refreshIfStale(db: DB, now: Date = new Date()): Promise<void> {
+const inflight = new Map<string, Promise<unknown>>();
+
+/**
+ * Refreshes every enabled keyless/keyed source whose last run is older than its
+ * own interval, in parallel. A run in progress is shared, never duplicated.
+ * Bounded by a short timeout so callers are never blocked for long.
+ */
+const RETRY_AFTER_FAILURE_MINUTES = 5;
+
+export async function refreshIfStale(
+  db: DB,
+  now: Date = new Date(),
+  keys: readonly string[] = INGESTIBLE_KEYS,
+  timeoutMs = 6_000,
+): Promise<void> {
   const cfg = config();
-  const connector = buildConnector("google_trends_rss_in", cfg);
-  if (!connector) return;
-  const [src] = await db.select().from(sources).where(eq(sources.key, connector.key));
-  if (src?.lastRunAt && now.getTime() - src.lastRunAt.getTime() < REFRESH_AFTER_MINUTES * 60_000) return;
-  await runIngestion(db, connector, { trigger: "scheduled", attempts: 1, timeoutMs: 6_000, now }).catch(() => undefined);
+  const rows = new Map((await db.select().from(sources)).map((r) => [r.key, r]));
+  const jobs = keys.map((key) => {
+    const connector = buildConnector(key, cfg);
+    if (!connector) return null;
+    const row = rows.get(key);
+    // Fresh enough, or failed moments ago (short backoff instead of waiting a whole interval).
+    if (row?.lastSuccessAt && now.getTime() - row.lastSuccessAt.getTime() < connector.minIntervalMinutes * 60_000) return null;
+    if (row?.lastRunAt && now.getTime() - row.lastRunAt.getTime() < RETRY_AFTER_FAILURE_MINUTES * 60_000) return null;
+    let job = inflight.get(key);
+    if (!job) {
+      job = runIngestion(db, connector, { trigger: "scheduled", attempts: 1, timeoutMs, now })
+        .catch(() => undefined)
+        .finally(() => inflight.delete(key));
+      inflight.set(key, job);
+    }
+    return job;
+  });
+  await Promise.all(jobs);
 }
 
 export async function findTrendContext(db: DB, text: string, opts: { includeDemo: boolean; now?: Date }): Promise<TrendContextItem[]> {
   const now = opts.now ?? new Date();
-  await refreshIfStale(db, now);
+  await refreshIfStale(db, now, CONTEXT_SOURCES);
   const since = new Date(now.getTime() - MAX_AGE_HOURS * 3_600_000);
   const keys = opts.includeDemo ? [...CONTEXT_SOURCES, ...DEMO_SOURCES] : CONTEXT_SOURCES;
   const rows = await db
@@ -143,7 +169,16 @@ export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ ite
   const rows = await db
     .select()
     .from(sourceObservations)
-    .where(and(inArray(sourceObservations.sourceKey, CONTEXT_SOURCES), gte(sourceObservations.observedAt, since), eq(sourceObservations.isDemo, false)))
+    .where(
+      and(
+        eq(sourceObservations.isDemo, false),
+        or(
+          and(eq(sourceObservations.sourceKey, "google_trends_rss_in"), gte(sourceObservations.observedAt, since)),
+          // Wikipedia publishes whole days stamped at 00:00 UTC, so yesterday's list can be up to ~48h "old" when it arrives.
+          and(eq(sourceObservations.sourceKey, "wikimedia_top_in"), gte(sourceObservations.observedAt, new Date(now.getTime() - 72 * 3_600_000))),
+        ),
+      ),
+    )
     .orderBy(desc(sourceObservations.retrievedAt), sourceObservations.rank)
     .limit(300);
   const seen = new Set<string>();
@@ -171,5 +206,34 @@ export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ ite
       rank: r.rank,
     });
   }
-  return { items, hidden };
+  // Google's live searches first, then Wikipedia's most-read in chart order (top entries only — the page stays scannable).
+  const google = items.filter((i) => i.sourceKey === "google_trends_rss_in");
+  const wiki = items
+    .filter((i) => i.sourceKey === "wikimedia_top_in")
+    .sort((a, b) => b.observedAt.getTime() - a.observedAt.getTime() || (a.rank ?? 999) - (b.rank ?? 999))
+    .slice(0, WIKI_LIMIT);
+  return { items: [...google, ...wiki], hidden };
+}
+
+export interface TopSong {
+  id: string;
+  title: string;
+  url: string | null;
+  rank: number | null;
+  observedAt: Date;
+}
+
+/** The latest Apple Music India chart that was fetched (one batch, in chart order). */
+export async function topSongs(db: DB, limit = 20): Promise<TopSong[]> {
+  const rows = await db
+    .select()
+    .from(sourceObservations)
+    .where(eq(sourceObservations.sourceKey, "apple_music_top_in"))
+    .orderBy(desc(sourceObservations.retrievedAt), sourceObservations.rank)
+    .limit(100);
+  const latest = rows[0]?.retrievedAt.getTime();
+  return rows
+    .filter((r) => r.retrievedAt.getTime() === latest)
+    .slice(0, limit)
+    .map((r) => ({ id: r.id, title: r.title, url: r.url, rank: r.rank, observedAt: r.observedAt }));
 }

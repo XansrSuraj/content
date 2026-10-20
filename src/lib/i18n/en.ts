@@ -385,6 +385,11 @@ export const en = {
     makeCaption: "Make a caption",
     makeBrief: "Make a brief",
     hidden: (n: number) => `${n} trend${n === 1 ? " about violence or tragedy is" : "s about violence or tragedy are"} hidden here. These need careful human judgment before anyone makes content about them.`,
+    musicTitle: "Top songs in India",
+    musicLead: "Most-played songs on Apple Music in India right now. A streaming chart, not Reels or Shorts audio — use a song only if it's in the app's own music library.",
+    musicSource: "Data source: Apple Music",
+    musicOpen: "Open in Apple Music",
+    musicEmpty: "The song chart hasn't loaded yet. It refreshes automatically — check back in a minute.",
     prefill: (topic: string) => `Trend: ${topic}\nMy video: `,
   },
   opps: {
@@ -444,7 +449,7 @@ export const en = {
       high: "High: two or more sources across multiple days",
     } as Record<string, string>,
     audioTitle: "Trending audio & posting times",
-    audioText: "Trending audio isn't connected — no licensed audio source is configured, so no audio list is shown. There's no universal “best posting time”; your own posting log on the Published page shows patterns from your own entries.",
+    audioText: "Instagram and YouTube don't share their in-app trending audio through any permitted API. For music, see “Top songs in India” (Apple Music chart) on the Trending now page. There's no universal “best posting time”; your own posting log on the Published page shows patterns from your own entries.",
   },
   oppDetail: {
     all: "All ideas",
@@ -619,6 +624,8 @@ export const en = {
     manualNote: "Manually entered by you · not platform data.",
   },
   settings: {
+    notPossibleTitle: (n: number) => `Not possible without platform approval (${n})`,
+    notPossibleText: "These platforms don't offer this data through any permitted, free API. Scraping them breaks their terms and gets blocked, so TrendSaathi doesn't do it. Free alternatives above are used instead.",
     title: "Settings",
     deletedHistory: "Your history was deleted.",
     confirmError: "Type DELETE in capitals to confirm.",

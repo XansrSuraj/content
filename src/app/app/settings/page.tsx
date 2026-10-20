@@ -81,7 +81,7 @@ export default async function SettingsPage(props: PageProps<"/app/settings">) {
           </p>
         </div>
         <ul className="mt-3 space-y-2">
-          {status.sources.map((s) => {
+          {status.sources.filter((s) => s.status !== "unavailable").map((s) => {
             const info = SOURCES.find((x) => x.key === s.key)!;
             return (
               <li key={s.key} className="rounded-lg border border-line p-3 text-sm">
@@ -106,6 +106,22 @@ export default async function SettingsPage(props: PageProps<"/app/settings">) {
             );
           })}
         </ul>
+        <details className="mt-3 rounded-lg border border-line p-3 text-sm">
+          <summary className="cursor-pointer font-semibold">
+            {t.notPossibleTitle(status.sources.filter((s) => s.status === "unavailable").length)}
+          </summary>
+          <p className="mt-2 text-xs text-muted">{t.notPossibleText}</p>
+          <ul className="mt-2 space-y-2">
+            {status.sources
+              .filter((s) => s.status === "unavailable")
+              .map((s) => (
+                <li key={s.key} className="text-xs">
+                  <span className="font-semibold">{s.name}</span>
+                  <span className="text-muted"> — {SOURCES.find((x) => x.key === s.key)!.coverage}</span>
+                </li>
+              ))}
+          </ul>
+        </details>
       </Card>
 
       <Card className="p-5 sm:p-6">

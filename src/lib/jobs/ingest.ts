@@ -6,14 +6,16 @@ import { SOURCE_NAMES, sourceStatus } from "@/lib/providers/trends/catalog";
 import { SourceFetchError, type FetchedObservation, type TrendSourceConnector } from "@/lib/providers/trends/types";
 import { GoogleTrendsRssConnector } from "@/lib/providers/trends/google-trends-rss";
 import { WikimediaTopInConnector } from "@/lib/providers/trends/wikimedia";
+import { AppleMusicTopConnector } from "@/lib/providers/trends/apple-music";
 import { YouTubeMostPopularConnector } from "@/lib/providers/trends/youtube";
 
-export const INGESTIBLE_KEYS = ["wikimedia_top_in", "google_trends_rss_in", "youtube_most_popular_in"] as const;
+export const INGESTIBLE_KEYS = ["wikimedia_top_in", "google_trends_rss_in", "apple_music_top_in", "youtube_most_popular_in"] as const;
 
 export function buildConnector(key: string, cfg: AppConfig, env: NodeJS.ProcessEnv = process.env): TrendSourceConnector | null {
   if (sourceStatus(key, cfg).status !== "enabled") return null;
   if (key === "wikimedia_top_in") return new WikimediaTopInConnector(cfg.sources.wikimediaUserAgent!);
   if (key === "google_trends_rss_in") return new GoogleTrendsRssConnector(cfg.sources.userAgent);
+  if (key === "apple_music_top_in") return new AppleMusicTopConnector(cfg.sources.userAgent);
   if (key === "youtube_most_popular_in") return new YouTubeMostPopularConnector(env.YOUTUBE_API_KEY!.trim());
   return null;
 }

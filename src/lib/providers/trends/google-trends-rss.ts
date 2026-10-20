@@ -78,7 +78,7 @@ const STORE_DAYS = 7;
 export class GoogleTrendsRssConnector implements TrendSourceConnector {
   key = "google_trends_rss_in";
   /** Google refreshes the page often; we fetch politely at most every 2 hours. */
-  minIntervalMinutes = 120;
+  minIntervalMinutes = 30;
   constructor(
     private userAgent: string,
     private geo = "IN",
