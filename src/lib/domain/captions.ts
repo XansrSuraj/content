@@ -217,7 +217,41 @@ export type CaptionResult = z.infer<typeof CaptionResultBase>;
  * error is reported in the terms the model was asked for (platforms × 3 options of
  * different kinds), then the reply is converted into the stored result.
  */
-export const CaptionFromModelSchema = CaptionModelOutputSchema.superRefine((v, ctx) => {
+/**
+ * Small models often omit fields that should be empty (no `title` on an Instagram option,
+ * no `hashtagSuggestions`). Those are filled with empty defaults here; real structural
+ * problems (wrong option count, empty text) still fail and get repaired.
+ */
+function fillModelDefaults(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const r = { ...(input as Record<string, unknown>) };
+  for (const k of ["assumptions", "hooks", "hashtagSuggestions", "keywords", "improvements", "limitations"]) if (!Array.isArray(r[k])) r[k] = [];
+  if (r.clarifyingQuestion === undefined) r.clarifyingQuestion = null;
+  if (typeof r.topicSummary !== "string") r.topicSummary = "";
+  if (!Array.isArray(r.platforms)) r.platforms = [];
+  r.platforms = (r.platforms as Record<string, unknown>[]).map((p) => ({
+    ...p,
+    options: Array.isArray(p?.options)
+      ? (p.options as Record<string, unknown>[]).map((o) => ({
+          title: "",
+          description: "",
+          caption: "",
+          why: "",
+          ...o,
+          hashtags: Array.isArray(o?.hashtags) ? o.hashtags : [],
+        }))
+      : [],
+  }));
+  return r;
+}
+
+/** A complete reply in the older shape (exactly 3 variants) is accepted rather than wasted. */
+function isCompleteV1(input: unknown): boolean {
+  const r = input as { platforms?: unknown[]; variants?: unknown[] } | null;
+  return Boolean(r && (!r.platforms || r.platforms.length === 0) && Array.isArray(r.variants) && r.variants.length === 3);
+}
+
+const CaptionFromModelV2 = z.preprocess(fillModelDefaults, CaptionModelOutputSchema).superRefine((v, ctx) => {
   if (v.platforms.length === 0) ctx.addIssue({ code: "custom", path: ["platforms"], message: "Must contain one entry per platform listed in <context>.platforms" });
   v.platforms.forEach((p, i) => {
     const kinds = p.options.map((o) => o.kind);
@@ -232,6 +266,13 @@ export const CaptionFromModelSchema = CaptionModelOutputSchema.superRefine((v, c
   const r = CaptionResultSchema.safeParse(v);
   if (r.success) return r.data;
   for (const i of r.error.issues) ctx.addIssue({ code: "custom", path: i.path as (string | number)[], message: i.message });
+  return z.NEVER;
+});
+
+export const CaptionFromModelSchema = z.unknown().transform((input, ctx) => {
+  const parsed = isCompleteV1(input) ? CaptionResultSchema.safeParse(input) : CaptionFromModelV2.safeParse(input);
+  if (parsed.success) return parsed.data as CaptionResult;
+  for (const i of parsed.error.issues) ctx.addIssue({ code: "custom", path: i.path as (string | number)[], message: i.message });
   return z.NEVER;
 });
 

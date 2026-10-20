@@ -97,3 +97,21 @@ describe("pipeline", () => {
     expect(seen[1].evidenceNotes.join("\n")).toMatch(/MATCH .*FC Arsenal vs Everton FC/);
   });
 });
+
+describe("lenient model replies", () => {
+  it("fills omitted empty fields and accepts a complete older-format reply", async () => {
+    const { CaptionFromModelSchema } = await import("@/lib/domain/captions");
+    const out = sampleModelOutput() as unknown as Record<string, unknown>;
+    const platforms = (out.platforms as { options: Record<string, unknown>[] }[]).map((p) => ({
+      ...p,
+      options: p.options.map((o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "title" && k !== "description"))),
+    }));
+    const withoutSuggestions = Object.fromEntries(Object.entries(out).filter(([k]) => k !== "hashtagSuggestions"));
+    const r = CaptionFromModelSchema.safeParse({ ...withoutSuggestions, platforms });
+    expect(r.success).toBe(true);
+    expect(CaptionFromModelSchema.safeParse(sampleResult()).success).toBe(true);
+    // Real structural problems still fail.
+    const two = { ...out, platforms: [{ ...platforms[0], options: platforms[0].options.slice(0, 2) }] };
+    expect(CaptionFromModelSchema.safeParse(two).success).toBe(false);
+  });
+});
