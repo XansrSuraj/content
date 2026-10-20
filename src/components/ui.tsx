@@ -161,3 +161,17 @@ export function daysAgo(days: number): Date {
 export function istNowForInput(): string {
   return new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 16);
 }
+
+const MODE_BADGE = {
+  live_ai: { tone: "ok", text: "Live AI" },
+  open_model: { tone: "ok", text: "Open-source AI" },
+  local_ai: { tone: "info", text: "Local AI (development)" },
+  template_preview: { tone: "warn", text: "Template preview — not AI" },
+  example: { tone: "accent", text: "Example (pre-written)" },
+} as const;
+
+/** How a piece of content was generated — always visible to the creator. */
+export function ModeBadge({ mode }: { mode: keyof typeof MODE_BADGE }) {
+  const m = MODE_BADGE[mode];
+  return <Badge tone={m.tone}>{m.text}</Badge>;
+}

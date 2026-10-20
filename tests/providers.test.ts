@@ -111,3 +111,15 @@ describe("caption turn with a failing provider", () => {
     expect(res).toEqual({ ok: false, error: { kind: "not_found" } });
   });
 });
+
+describe("unmet follow-up requests are reported, not hidden", () => {
+  it("flags 'shorter' when the new options are not shorter", async () => {
+    const { flagUnmetRequests } = await import("@/lib/services/captions");
+    const prev = { id: "m1", conversationId: "c", role: "assistant" as const, text: "", result: sampleResult() as unknown as Record<string, unknown>, mode: "local_ai" as const, contextUsed: null, createdAt: new Date() };
+    const same = flagUnmetRequests(sampleResult(), ["Length: short"], [prev]);
+    expect(same.limitations.join(" ")).toMatch(/not shorter/);
+    const shorter = sampleResult({ variants: sampleResult().variants.map((v) => ({ ...v, caption: "Chhota." })) });
+    expect(flagUnmetRequests(shorter, ["Length: short"], [prev]).limitations).toEqual([]);
+    expect(flagUnmetRequests(sampleResult(), [], [prev]).limitations).toEqual([]);
+  });
+});

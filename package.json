@@ -14,7 +14,8 @@
     "db:migrate": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/migrate.ts",
     "db:seed-demo": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/seed-demo.ts",
     "ingest": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/ingest.ts",
-    "check:bundle": "node scripts/check-bundle.mjs"
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "eval:captions": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/eval-captions.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
@@ -28,6 +29,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite-socket": "^0.2.13",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^24.19.2",

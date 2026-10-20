@@ -25,11 +25,15 @@ export default async function NewBriefPage(props: PageProps<"/app/briefs/new">) 
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader title="New content brief" subtitle="Topic likho — baaki optional hai." />
-      {ai.kind !== "live" && (
-        <Notice tone="warn" title="AI not configured" className="mb-4">
-          You&apos;ll get a labeled template brief with blanks to fill. Set {ai.missing.join(" and ")} for personalised briefs.
+      {ai.kind === "local" ? (
+        <Notice tone="info" title="Local AI (development)" className="mb-4">
+          Briefs are written by {ai.model} running on this computer. It can take a minute or two, and quality is lower than the production model.
         </Notice>
-      )}
+      ) : ai.kind === "not_configured" ? (
+        <Notice tone="warn" title="AI not configured" className="mb-4">
+          You&apos;ll get a labeled template brief with blanks to fill. {ai.note ?? `Set ${ai.missing.join(" and ")} for personalised briefs.`}
+        </Notice>
+      ) : null}
       {opp?.isDemo && (
         <Notice tone="demo" className="mb-4">
           Based on a demo opportunity. Its evidence is sample data.
@@ -37,7 +41,7 @@ export default async function NewBriefPage(props: PageProps<"/app/briefs/new">) 
       )}
       <BriefForm
         defaults={{
-          topic: opp ? opp.title : "",
+          topic: opp ? opp.title : typeof sp.topic === "string" ? sp.topic.slice(0, 200) : "",
           opportunityId: opp?.id ?? "",
           angle: angle ? `${angle.title} — ${angle.description}` : "",
           platform: (opp?.platforms.find((p) => profile?.platforms.includes(p)) ?? profile?.platforms.find(isPlatformId) ?? "instagram_reels"),

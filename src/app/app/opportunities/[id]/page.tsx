@@ -13,6 +13,14 @@ import { FreshnessLabel } from "@/components/opportunity-card";
 
 export const metadata = { title: "Opportunity" };
 
+/** Source-provided metrics only, described the way the source defines them. */
+function metricLabel(name: string | null, value: number | null): string {
+  if (!name || value == null) return "";
+  if (name === "views_ceil") return ` · Wikipedia views (rounded up by Wikimedia): ${value.toLocaleString("en-IN")}`;
+  if (name === "approx_traffic") return ` · Google approx. searches (bucket): ${value.toLocaleString("en-IN")}+`;
+  return "";
+}
+
 export default async function OpportunityDetail(props: PageProps<"/app/opportunities/[id]">) {
   const user = await requireUser();
   const { id } = await props.params;
@@ -147,13 +155,14 @@ export default async function OpportunityDetail(props: PageProps<"/app/opportuni
                     <div>Geography: {e.geo}{e.language ? ` · language ${e.language}` : ""}</div>
                     <div>
                       {e.rank != null ? `Position in source list: #${e.rank}` : "Position: unknown"}
-                      {e.metricName && e.metricValue != null && e.metricName !== "demo_rank" && e.metricName !== "chart_position"
-                        ? ` · ${e.metricName}: ${e.metricValue.toLocaleString("en-IN")}`
-                        : ""}
+                      {metricLabel(e.metricName, e.metricValue)}
                     </div>
                   </dl>
                   <p className="mt-1 text-xs">Coverage: {e.coverageNote}</p>
                   {src && src.kind === "trend_topics" && <p className="mt-1 text-xs text-warn">Reading interest is not social-media popularity.</p>}
+                  {src && src.kind === "search_interest" && (
+                    <p className="mt-1 text-xs text-warn">Google search interest is not social-media or hashtag popularity. Data source: Google Trends.</p>
+                  )}
                   {e.url && (
                     <a href={e.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold text-brand underline">
                       Open source ↗

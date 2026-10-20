@@ -5,6 +5,8 @@ import {
   CaptionResultSchema,
   DEFAULT_CONTEXT,
   enforceConstraints,
+  applyLockedFirstLine,
+  stripTrailingHashtags,
 } from "@/lib/domain/captions";
 import { BriefContentSchema } from "@/lib/domain/briefs";
 import { TemplateCaptionProvider, stripInstructions } from "@/lib/providers/ai/template";
@@ -100,5 +102,29 @@ describe("template preview (no AI key)", () => {
     expect(out.data.limitations.join(" ")).toMatch(/ANTHROPIC_API_KEY/);
     expect(CaptionResultSchema.safeParse(out.data).success).toBe(true);
     expect(JSON.stringify(out.data).toLowerCase()).not.toContain("trending");
+  });
+});
+
+describe("regressions found by the caption eval", () => {
+  it("a locked first line with emoji cannot bring emoji back when emoji is off", () => {
+    const ctx = { ...DEFAULT_CONTEXT, emoji: "none" as const, keepFirstLine: "Aaj ka vlog: pehli baar pizza banaya 🍕" };
+    const out = enforceConstraints(sampleResult(), ctx);
+    for (const v of out.variants) {
+      expect(v.caption).not.toMatch(/\p{Extended_Pictographic}/u);
+      expect(v.caption.split("\n")[0]).toBe("Aaj ka vlog: pehli baar pizza banaya");
+    }
+  });
+
+  it("keeps the model's text after a repeated locked line instead of dropping it", () => {
+    expect(applyLockedFirstLine("Aaj ka vlog 🍕 Oven nahi tha toh kadhai use ki.", "Aaj ka vlog 🍕", "auto")).toBe(
+      "Aaj ka vlog 🍕\nOven nahi tha toh kadhai use ki.",
+    );
+    expect(applyLockedFirstLine("Aaj ka vlog Oven nahi tha.", "Aaj ka vlog 🍕", "none")).toBe("Aaj ka vlog\nOven nahi tha.");
+    expect(applyLockedFirstLine("Naya hook!\nDoosri line.", "Meri line", "auto")).toBe("Meri line\nNaya hook!\nDoosri line.");
+  });
+
+  it("removes a trailing hashtag run from caption text (hashtags live in their own field)", () => {
+    expect(stripTrailingHashtags("Last over dekha! #Cricket #LiveReaction\n#Cricket")).toBe("Last over dekha!");
+    expect(stripTrailingHashtags("Mid-sentence #tag stays here.")).toBe("Mid-sentence #tag stays here.");
   });
 });

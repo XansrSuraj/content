@@ -67,6 +67,11 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
     }
   }
 
+  if (!conv && !prefill && typeof sp.topic === "string" && sp.topic.trim()) {
+    // Names the trend and leaves the creator's own angle to fill in — a bare trend word gives the model nothing real to say.
+    prefill = `Trend: ${sp.topic.trim().slice(0, 200)}\nMera video: `;
+  }
+
   const ai = aiStatus();
 
   return (
@@ -78,7 +83,7 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
       initialContext={baseContext}
       prefill={prefill}
       opportunityId={opportunityId}
-      ai={ai.kind === "live" ? { live: true } : { live: false, missing: ai.missing }}
+      ai={ai.kind === "live" || ai.kind === "open" ? { kind: "live" } : ai.kind === "local" ? { kind: "local", model: ai.model } : { kind: "none", missing: ai.missing, note: ai.note }}
       uiLanguage={profile?.uiLanguage ?? "hinglish"}
       isDemo={user.isDemo}
     />

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isSafeTitle } from "./filters";
 import { fetchJson, SourceFetchError, type FetchedObservation, type TrendSourceConnector } from "./types";
 
 const ResponseSchema = z.object({
@@ -22,7 +23,6 @@ const ResponseSchema = z.object({
 
 /** Pages that are navigation, not topics, or not suitable as creator opportunities. */
 const EXCLUDED_PREFIX = /^(Main_Page|Special:|Wikipedia:|File:|Portal:|Help:|Category:|Template:|Talk:|User:|मुखपृष्ठ)/i;
-const SENSITIVE = /(xxx|xnxx|xvideos|xhamster|pornhub|redtube|youporn|brazzers|porn|sex|nude|naked|onlyfans|erotic|hentai|escort|camgirl)/i;
 /**
  * Namespace pages in any language ("Speciel:Søgning", "Especial:Cerca") have a
  * colon directly followed by a letter. Real titles use "Title:_Subtitle".
@@ -32,7 +32,7 @@ const NAMESPACE_LIKE = /^[^:_]+:[^_]/u;
 export function filterArticle(article: string): boolean {
   if (EXCLUDED_PREFIX.test(article)) return false;
   if (NAMESPACE_LIKE.test(article)) return false;
-  if (SENSITIVE.test(article)) return false;
+  if (!isSafeTitle(article)) return false;
   return true;
 }
 

@@ -177,6 +177,19 @@ export const opportunityEvidence = pgTable(
 
 // ---------- Caption Studio ----------
 
+export interface TrendContextItem {
+  title: string;
+  sourceKey: string;
+  sourceName: string;
+  platform: string;
+  geo: string;
+  observedAt: string;
+  metric: string | null;
+  url: string | null;
+  isDemo: boolean;
+  matched: string[];
+}
+
 export const conversations = pgTable(
   "conversations",
   {
@@ -204,8 +217,10 @@ export const messages = pgTable(
     text: text("text").notNull().default(""),
     /** Validated CaptionResult JSON for assistant messages. */
     result: jsonb("result").$type<Record<string, unknown>>(),
-    /** live_ai | template_preview | example — always shown to the user. */
-    mode: text("mode", { enum: ["live_ai", "template_preview", "example"] }),
+    /** live_ai | local_ai | template_preview | example — always shown to the user. */
+    mode: text("mode", { enum: ["live_ai", "open_model", "local_ai", "template_preview", "example"] }),
+    /** Trend observations given to the model as context for this answer (shown to the creator). */
+    contextUsed: jsonb("context_used").$type<TrendContextItem[]>(),
     createdAt: createdAt(),
   },
   (t) => [index("msg_conv_idx").on(t.conversationId, t.createdAt)],
@@ -241,7 +256,7 @@ export const briefs = pgTable(
     topic: text("topic").notNull(),
     platform: text("platform").notNull(),
     content: jsonb("content").$type<Record<string, unknown>>().notNull(),
-    mode: text("mode", { enum: ["live_ai", "template_preview", "example"] }).notNull(),
+    mode: text("mode", { enum: ["live_ai", "open_model", "local_ai", "template_preview", "example"] }).notNull(),
     edited: boolean("edited").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

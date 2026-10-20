@@ -48,3 +48,6 @@ next-env.d.ts
 /.data-dev.log
 /e2e-shots/
 /.data-prod.log
+/eval-output/
+/.data-pg.log
+/.data-prod2.log

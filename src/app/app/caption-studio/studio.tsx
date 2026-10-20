@@ -31,7 +31,7 @@ export function Studio(props: {
   initialContext: CaptionContext;
   prefill: string;
   opportunityId: string | null;
-  ai: { live: true } | { live: false; missing: string[] };
+  ai: { kind: "live" } | { kind: "local"; model: string } | { kind: "none"; missing: string[]; note?: string };
   uiLanguage: UiLang;
   isDemo: boolean;
 }) {
@@ -47,6 +47,7 @@ export function Studio(props: {
   const [panelOpen, setPanelOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [regenTone, setRegenTone] = useState(context.tone);
+  const [live, setLive] = useState<{ tokens: number; preview: string; startedAt: number } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const lang = props.uiLanguage;
   const isFirstTurn = messages.length === 0;
@@ -62,17 +63,38 @@ export function Studio(props: {
     setPending(true);
     setError(null);
     setLastSent({ message: text, context: ctx });
+    setLive({ tokens: 0, preview: "", startedAt: Date.now() });
     try {
       const res = await fetch("/api/captions/turn", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ conversationId, message: text, context: ctx, opportunityId: props.opportunityId }),
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data) {
+      // Errors before streaming starts (auth, validation, origin) come back as plain JSON.
+      if (!res.ok || !res.body || !res.headers.get("content-type")?.includes("ndjson")) {
+        const data = await res.json().catch(() => null);
         setError(data?.error ?? { code: "network", message: "Something went wrong. Please try again.", retryable: true });
         return;
       }
+      let data: { conversationId: string; context: CaptionContext; applied: string[]; userMessage: ClientMessage; assistantMessage: ClientMessage } | null = null;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const evt = JSON.parse(line);
+          if (evt.type === "progress") setLive((l) => (l ? { ...l, tokens: evt.tokens, preview: evt.preview || l.preview } : l));
+          else if (evt.type === "error") setError(evt.error);
+          else if (evt.type === "result") data = evt;
+        }
+      }
+      if (!data) return;
       setMessages((m) => [...m, data.userMessage, data.assistantMessage]);
       setContext(data.context);
       setApplied(data.applied ?? []);
@@ -86,6 +108,7 @@ export function Studio(props: {
       setError({ code: "network", message: "Network error. Check your connection and retry.", retryable: true });
     } finally {
       setPending(false);
+      setLive(null);
     }
   }
 
@@ -124,11 +147,17 @@ export function Studio(props: {
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
-          {!props.ai.live && (
+          {props.ai.kind === "none" && (
             <Notice tone="warn" title="AI is not configured on this server">
-              Results are a <strong>template preview built from your own words</strong>, not AI rewrites. To enable real
-              generation, set {props.ai.missing.join(" and ")} in <code>.env.local</code> and restart the server.
+              Results are a <strong>template preview built from your own words</strong>, not AI rewrites.{" "}
+              {props.ai.note ?? <>To enable real generation for free, set <code>AI_PROVIDER=ollama</code> in <code>.env.local</code> (needs Ollama), or set {props.ai.missing.join(" and ")}. Then restart the server.</>}
               {props.isDemo && " The example conversation in the list shows what live AI output looks like."}
+            </Notice>
+          )}
+          {props.ai.kind === "local" && isFirstTurn && (
+            <Notice tone="info" title="Local AI (development)">
+              Captions come from <code>{props.ai.model}</code> running on this computer via Ollama — free, but slower and
+              lower quality than the production model. Check every caption before posting.
             </Notice>
           )}
 
@@ -156,14 +185,10 @@ export function Studio(props: {
             ) : null,
           )}
 
-          {pending && (
-            <div role="status" className="max-w-md animate-pulse rounded-xl border border-line bg-surface p-4 text-sm text-muted">
-              {props.ai.live ? "Captions likh rahe hain… (usually 10–30 seconds)" : "Building template preview…"}
-            </div>
-          )}
+          {pending && <LiveProgress live={live} kind={props.ai.kind} />}
 
           {error && (
-            <Notice tone="danger" title={error.code === "quota" ? "Limit reached" : "Couldn't generate captions"}>
+            <Notice tone="danger" title={error.code === "quota" ? "Limit reached" : error.code === "local_unavailable" ? "Local AI unavailable" : "Couldn't generate captions"}>
               <p>{error.message}</p>
               {error.retryAfterSeconds ? <p className="mt-1">Try again in about {Math.ceil(error.retryAfterSeconds / 60)} min.</p> : null}
               {error.retryable !== false && error.code !== "quota" && lastSent && (
@@ -272,6 +297,43 @@ export function Studio(props: {
         </div>
         <ContextPanel context={context} onChange={setContext} hasConversation={!isFirstTurn} />
       </aside>
+    </div>
+  );
+}
+
+/** Live status while captions are generated: elapsed time, progress and a preview of option A. */
+function LiveProgress({ live, kind }: { live: { tokens: number; preview: string; startedAt: number } | null; kind: "live" | "local" | "none" }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const seconds = live ? Math.max(0, Math.round((now - live.startedAt) / 1000)) : 0;
+  const label =
+    kind === "live"
+      ? "Captions likh rahe hain…"
+      : kind === "local"
+        ? live?.tokens
+          ? "Local model likh raha hai…"
+          : "Local model aapka message padh raha hai…"
+        : "Building template preview…";
+  return (
+    <div role="status" aria-live="polite" className="max-w-2xl rounded-xl border border-line bg-surface p-4 text-sm">
+      <div className="flex items-center justify-between gap-2 text-muted">
+        <span className="flex items-center gap-2">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-brand" aria-hidden />
+          {label}
+        </span>
+        <span className="tabular-nums">
+          {seconds}s{live?.tokens ? ` · ${live.tokens} words/pieces` : ""}
+        </span>
+      </div>
+      {live?.preview && (
+        <div className="mt-3 rounded-lg bg-surface-2 p-3">
+          <p className="text-xs font-semibold text-muted">Option A (writing…)</p>
+          <p className="mt-1 whitespace-pre-wrap">{live.preview}</p>
+        </div>
+      )}
     </div>
   );
 }

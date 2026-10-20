@@ -133,6 +133,21 @@ export function ContextPanel({
         </div>
       )}
 
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4"
+          checked={context.useTrends}
+          onChange={(e) => set("useTrends", e.target.checked)}
+        />
+        <span>
+          Use current trends as context
+          <span className="block text-xs text-muted">
+            Matches your topic with fresh Google Trends / Wikipedia data (search interest, not social virality) and shows what was used.
+          </span>
+        </span>
+      </label>
+
       <Field label="Output" htmlFor="ctx-output">
         <Select id="ctx-output" value={context.outputMode} onChange={(e) => set("outputMode", e.target.value as CaptionContext["outputMode"])}>
           <option value="full">Full (options, hooks, explanation)</option>

@@ -93,8 +93,24 @@ export const SOURCES: SourceInfo[] = [
     ingestible: false,
   },
   {
+    key: "google_trends_rss_in",
+    name: "Google search interest (India) — Trending now RSS",
+    platform: "google_search",
+    kind: "search_interest",
+    coverage:
+      "About 10 Google Search queries in India with a recent surge in interest, from Google Trends' official “Trending now” RSS export, with Google's approximate traffic bucket. Search interest only — not Instagram, YouTube, Facebook or TikTok popularity, and never used to mark a hashtag as observed.",
+    requirements: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true (no key, no account)"],
+    policyNotes: [
+      "Google: “You can use any information from Google Trends, subject to the Google Terms of Service.” Reuse requires the citation “Data source: Google Trends”.",
+      "Fetched anonymously (no cookies) at most every 2 hours; robots.txt does not disallow the feed. Stored rows expire after 7 days.",
+      "Google's terms do not clearly address commercial display at scale — get legal review before launch.",
+    ],
+    docsUrl: "https://support.google.com/trends/answer/3076011",
+    ingestible: true,
+  },
+  {
     key: "google_trends",
-    name: "Google Trends",
+    name: "Google Trends API",
     platform: "google_search",
     kind: "search_interest",
     coverage: "Not connected.",
@@ -137,6 +153,10 @@ export function sourceStatus(key: string, cfg: AppConfig): { status: SourceStatu
       if (!cfg.sources.wikimediaUserAgent) missing.push("WIKIMEDIA_USER_AGENT");
       return { status: missing.length ? "needs_config" : "enabled", missing };
     }
+    case "google_trends_rss_in":
+      return cfg.sources.googleTrendsRssEnabled
+        ? { status: "enabled", missing: [] }
+        : { status: "needs_config", missing: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true"] };
     case "youtube_most_popular_in":
       return cfg.sources.youtubeApiKeyPresent
         ? { status: "enabled", missing: [] }

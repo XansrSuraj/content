@@ -10,6 +10,8 @@ import { Badge, Button, Card, Textarea, cx, formatDateTime } from "@/components/
 
 const MODE_LABEL = {
   live_ai: { tone: "ok" as const, text: "Live AI" },
+  open_model: { tone: "ok" as const, text: "Open-source AI" },
+  local_ai: { tone: "info" as const, text: "Local AI (development)" },
   template_preview: { tone: "warn" as const, text: "Template preview — not AI" },
   example: { tone: "accent" as const, text: "Example (pre-written, not generated from your input)" },
 };
@@ -73,6 +75,7 @@ export function ResultCard({
               messageId={message.id}
               platformId={platformId}
               statusByTag={statusByTag}
+              trendTitles={(message.contextUsed ?? []).map((c) => c.title)}
             />
           ))}
           {!showAll && (
@@ -96,6 +99,8 @@ export function ResultCard({
                 </ul>
               </Section>
             )}
+
+            <TrendContextSection items={message.contextUsed} />
 
             <HashtagSection result={result} statuses={message.hashtags} platformId={platformId} />
 
@@ -161,6 +166,7 @@ function VariantBlock({
   messageId,
   platformId,
   statusByTag,
+  trendTitles,
 }: {
   variant: CaptionResult["variants"][number];
   recommended: boolean;
@@ -169,6 +175,7 @@ function VariantBlock({
   messageId: string;
   platformId: string;
   statusByTag: Map<string, ClientHashtagStatus>;
+  trendTitles: string[];
 }) {
   const platform = getPlatform(platformId);
   const rule = platform.hashtagRule;
@@ -225,6 +232,8 @@ function VariantBlock({
           {tags.length} hashtags is above the configured {platform.label} limit of {rule.hardLimit}. Copy uses the first {copyTags.length}.
         </p>
       )}
+
+      <PackagingCheck text={text} tags={tags} platformId={platformId} trendTitles={trendTitles} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <CopyButton text={text} label="Copy caption" />
@@ -298,6 +307,64 @@ function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "acc
                 )}
               </p>
             ))}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TrendContextSection({ items }: { items: ClientMessage["contextUsed"] }) {
+  if (items === null) return null;
+  return (
+    <Section title="Trend context used">
+      {items.length === 0 ? (
+        <p className="text-xs text-muted">
+          No matching topic in current Google Trends / Wikipedia data, so these captions are based on your text only.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((i) => (
+            <li key={i.title} className="rounded-lg border border-line p-2 text-xs">
+              <span className="font-semibold">{i.title}</span>
+              {i.isDemo && <Badge tone="accent" className="ml-1">demo</Badge>}
+              <span className="block text-muted">
+                {i.sourceName} · {i.geo} · observed {formatDateTime(i.observedAt)}
+                {i.metric ? ` · ${i.metric}` : ""}
+              </span>
+              <span className="block text-muted">Search/reading interest — not social-media virality.</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+/** Honest packaging checks for one option. These are checks, not a prediction of performance. */
+function PackagingCheck({ text, tags, platformId, trendTitles }: { text: string; tags: string[]; platformId: string; trendTitles: string[] }) {
+  const platform = getPlatform(platformId);
+  const rule = platform.hashtagRule;
+  const firstLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
+  const firstWords = firstLine.trim().split(/\s+/).filter(Boolean).length;
+  const lowered = text.toLowerCase();
+  const trendHit = trendTitles.find((t) => lowered.includes(t.toLowerCase()));
+  const limit = rule.hardLimit;
+  const checks: { ok: boolean | null; label: string }[] = [
+    { ok: firstWords <= 12, label: `Opening line: ${firstWords} words${firstWords <= 12 ? "" : " (long — viewers may scroll past)"}` },
+    {
+      ok: limit === null ? null : tags.length <= limit,
+      label: limit === null ? `${tags.length} hashtags (no official ${platform.label} limit found)` : `${tags.length} of max ${limit} hashtags${rule.status === "unverified" ? " (limit not officially confirmed)" : ""}`,
+    },
+    { ok: trendHit ? true : null, label: trendHit ? `Mentions a current search topic: “${trendHit}”` : "No current search topic mentioned" },
+  ];
+  return (
+    <div className="mt-2 rounded-lg bg-surface-2 p-2 text-[11px]">
+      <p className="font-semibold text-muted">Packaging check — not a prediction (no tool can predict virality)</p>
+      <ul className="mt-1 space-y-0.5">
+        {checks.map((c) => (
+          <li key={c.label} className={c.ok === false ? "text-warn" : c.ok ? "text-ok" : "text-muted"}>
+            {c.ok === false ? "!" : c.ok ? "✓" : "·"} {c.label}
           </li>
         ))}
       </ul>

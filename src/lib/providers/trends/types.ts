@@ -31,6 +31,15 @@ export class SourceFetchError extends Error {
   }
 }
 
+export async function fetchText(url: string, init: RequestInit & { signal: AbortSignal }): Promise<string | null> {
+  // credentials are never sent; feeds are fetched anonymously.
+  const res = await fetch(url, { ...init, credentials: "omit", redirect: "follow" });
+  if (res.status === 404) return null;
+  if (res.status === 429 || res.status >= 500) throw new SourceFetchError(`HTTP ${res.status}`, true);
+  if (!res.ok) throw new SourceFetchError(`HTTP ${res.status}`, false);
+  return res.text();
+}
+
 export async function fetchJson(url: string, init: RequestInit & { signal: AbortSignal }): Promise<unknown> {
   const res = await fetch(url, init);
   if (res.status === 404) return null;

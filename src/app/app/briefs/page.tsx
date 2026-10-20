@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { getPlatform } from "@/lib/domain/platforms";
 import { listBriefs } from "@/lib/repo/work";
-import { Badge, Card, EmptyState, LinkButton, PageHeader, formatDate } from "@/components/ui";
+import { Badge, ModeBadge, Card, EmptyState, LinkButton, PageHeader, formatDate } from "@/components/ui";
 
 export const metadata = { title: "Briefs" };
 
@@ -28,7 +28,7 @@ export default async function BriefsPage() {
             <Card key={b.id} className="p-4">
               <div className="flex flex-wrap gap-1.5">
                 <Badge tone="brand">{getPlatform(b.platform).label}</Badge>
-                <Badge tone={b.mode === "live_ai" ? "ok" : "warn"}>{b.mode === "live_ai" ? "Live AI" : "Template preview"}</Badge>
+                <ModeBadge mode={b.mode} />
                 {b.edited && <Badge>Edited</Badge>}
               </div>
               <Link href={`/app/briefs/${b.id}`} className="mt-2 block font-semibold hover:underline">

@@ -2,6 +2,7 @@ import type { HashtagStatus } from "@/lib/domain/hashtags";
 import type { CaptionResult, GenerationMode } from "@/lib/domain/captions";
 import { CaptionResultSchema } from "@/lib/domain/captions";
 import type { Message } from "@/lib/repo/studio";
+import type { TrendContextItem } from "@/lib/db/schema";
 
 /** Plain JSON shapes sent to the client (dates as ISO strings). */
 export interface ClientHashtagStatus {
@@ -25,6 +26,8 @@ export interface ClientMessage {
   mode: GenerationMode | null;
   result: CaptionResult | null;
   hashtags: ClientHashtagStatus[];
+  /** null = message predates trend context; [] = looked, nothing matched. */
+  contextUsed: TrendContextItem[] | null;
   createdAt: string;
 }
 
@@ -56,6 +59,7 @@ export function toClientMessage(m: Message, hashtags: HashtagStatus[] = []): Cli
     mode: m.mode,
     result: parsed?.success ? parsed.data : null,
     hashtags: toClientHashtags(hashtags),
+    contextUsed: m.contextUsed ?? null,
     createdAt: m.createdAt.toISOString(),
   };
 }

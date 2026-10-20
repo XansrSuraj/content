@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
@@ -11,14 +12,39 @@ import * as schema from "./schema";
  */
 export type DB = NodePgDatabase<typeof schema>;
 
-type Holder = { db: Promise<DB> | null; close: (() => Promise<void>) | null };
+type Holder = {
+  db: Promise<DB> | null;
+  close: (() => Promise<void>) | null;
+  /** Number of migration files applied to the embedded DB in this process. */
+  migratedCount?: number;
+  migrating?: Promise<void> | null;
+};
 const g = globalThis as unknown as { __trendsaathiDb?: Holder };
 const holder: Holder = (g.__trendsaathiDb ??= { db: null, close: null });
 
 const MIGRATIONS = path.join(/*turbopackIgnore: true*/ process.cwd(), "drizzle");
 
+function isPostgresUrl(url: string | undefined): boolean {
+  return Boolean(url && /^postgres(ql)?:\/\//.test(url));
+}
+
+function migrationFileCount(): number {
+  try {
+    return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).length;
+  } catch {
+    return 0;
+  }
+}
+
+async function migrateEmbedded(db: DB): Promise<void> {
+  const { migrate } = await import("drizzle-orm/pglite/migrator");
+  const count = migrationFileCount();
+  await migrate(db as never, { migrationsFolder: MIGRATIONS });
+  holder.migratedCount = count;
+}
+
 async function connect(url: string | undefined): Promise<DB> {
-  if (url && /^postgres(ql)?:\/\//.test(url)) {
+  if (isPostgresUrl(url)) {
     const { Pool } = await import("pg");
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const pool = new Pool({
@@ -31,9 +57,15 @@ async function connect(url: string | undefined): Promise<DB> {
     return drizzle(pool, { schema });
   }
 
+  // Free hosts have ephemeral disks: an embedded DB there silently loses every account on restart.
+  if (process.env.NODE_ENV === "production" && url !== "memory://" && process.env.TRENDSAATHI_ALLOW_EMBEDDED_DB_IN_PRODUCTION !== "true") {
+    throw new Error(
+      "DATABASE_URL (Postgres) is required in production. Set it to your Neon/Supabase/Postgres connection string, " +
+        "or set TRENDSAATHI_ALLOW_EMBEDDED_DB_IN_PRODUCTION=true for a single-machine install with a persistent disk.",
+    );
+  }
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
-  const { migrate } = await import("drizzle-orm/pglite/migrator");
   const dataDir =
     url === "memory://" ? undefined : path.resolve(/*turbopackIgnore: true*/ process.env.PGLITE_DATA_DIR ?? ".data/pglite");
   if (dataDir) {
@@ -41,26 +73,36 @@ async function connect(url: string | undefined): Promise<DB> {
     await mkdir(dataDir, { recursive: true });
   }
   const client = new PGlite(dataDir);
-  const db = drizzle(client, { schema });
-  await migrate(db, { migrationsFolder: MIGRATIONS });
+  const db = drizzle(client, { schema }) as unknown as DB;
+  await migrateEmbedded(db);
   holder.close = () => client.close();
-  return db as unknown as DB;
+  return db;
 }
 
-export function getDb(): Promise<DB> {
+export async function getDb(): Promise<DB> {
   if (!holder.db) {
     holder.db = connect(process.env.DATABASE_URL).catch((err) => {
       holder.db = null;
       throw err;
     });
   }
-  return holder.db;
+  const db = await holder.db;
+  // Embedded DB only: a long-running dev server picks up migrations added after it
+  // started, instead of failing on missing columns. Production never migrates implicitly.
+  if (!isPostgresUrl(process.env.DATABASE_URL) && holder.migratedCount !== migrationFileCount()) {
+    holder.migrating ??= migrateEmbedded(db).finally(() => {
+      holder.migrating = null;
+    });
+    await holder.migrating;
+  }
+  return db;
 }
 
 export async function closeDb(): Promise<void> {
   if (holder.close) await holder.close();
   holder.db = null;
   holder.close = null;
+  holder.migratedCount = undefined;
 }
 
 export { schema };

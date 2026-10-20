@@ -7,7 +7,7 @@ import { getPlatform } from "@/lib/domain/platforms";
 import { getBrief, savedRefIds } from "@/lib/repo/work";
 import { deleteBriefAction, sendFeedback, toggleSaveBrief } from "@/app/actions/work";
 import { CopyButton } from "@/components/copy-button";
-import { Badge, Button, Card, LinkButton, Notice, formatDateTime } from "@/components/ui";
+import { Badge, ModeBadge, Button, Card, LinkButton, Notice, formatDateTime } from "@/components/ui";
 import { BriefEditor } from "./brief-editor";
 
 export const metadata = { title: "Brief" };
@@ -53,7 +53,7 @@ export default async function BriefPage(props: PageProps<"/app/briefs/[id]">) {
       </Link>
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Badge tone="brand">{getPlatform(brief.platform).label}</Badge>
-        <Badge tone={brief.mode === "live_ai" ? "ok" : "warn"}>{brief.mode === "live_ai" ? "Live AI" : "Template preview — not AI"}</Badge>
+        <ModeBadge mode={brief.mode} />
         {brief.edited && <Badge>Edited by you</Badge>}
       </div>
       <h1 className="mt-2 text-2xl font-bold">{brief.topic}</h1>

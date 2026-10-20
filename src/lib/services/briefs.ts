@@ -1,5 +1,5 @@
 import "server-only";
-import { config } from "@/lib/config";
+import { config, selectedModel } from "@/lib/config";
 import type { DB } from "@/lib/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { BriefContentSchema, type BriefRequest } from "@/lib/domain/briefs";
@@ -80,7 +80,7 @@ export async function generateBrief(
     return { ok: true, brief };
   } catch (err) {
     const pe = err instanceof ProviderError ? err : new ProviderError("invalid_output", "The brief could not be generated.", true);
-    await recordUsage(db, { userId: user.id, kind: "brief", provider: provider.name, model: cfg.ai.model, status: "error", errorCode: pe.code, latencyMs: Date.now() - started });
+    await recordUsage(db, { userId: user.id, kind: "brief", provider: provider.name, model: selectedModel(cfg), status: "error", errorCode: pe.code, latencyMs: Date.now() - started });
     return { ok: false, error: { kind: "provider", code: pe.code, message: pe.message, retryable: pe.retryable } };
   }
 }

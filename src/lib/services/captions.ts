@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { aiStatus, config } from "@/lib/config";
+import { aiStatus, config, selectedModel } from "@/lib/config";
 import type { DB } from "@/lib/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import {
@@ -25,6 +25,7 @@ import {
   type Message,
 } from "@/lib/repo/studio";
 import { checkAiQuota } from "@/lib/security/rate-limit";
+import { findTrendContext, trendContextNotes } from "./trend-context";
 
 export const CaptionTurnSchema = z.object({
   conversationId: z.string().max(64).nullable().default(null),
@@ -74,6 +75,7 @@ export async function runCaptionTurn(
   user: SessionUser,
   input: CaptionTurnInput,
   provider: CaptionProvider = getCaptionProvider(),
+  opts: { onProgress?: (p: { tokens: number; text: string }) => void } = {},
 ): Promise<{ ok: true; value: TurnSuccess } | { ok: false; error: TurnError }> {
   const cfg = config();
   if (input.message.length > cfg.ai.maxInputChars) {
@@ -103,7 +105,7 @@ export async function runCaptionTurn(
     ? applyFollowUpToContext(input.message, panel.data, originalInput)
     : { context: panel.data, applied: [] as string[] };
 
-  const live = aiStatus(cfg).kind === "live";
+  const aiKind = aiStatus(cfg).kind;
   const quota = await checkAiQuota(db, user.id, {
     perMinute: cfg.limits.aiPerUserPerMinute,
     perDay: user.isDemo ? cfg.limits.demoAiPerUserPerDay : cfg.limits.aiPerUserPerDay,
@@ -121,7 +123,14 @@ export async function runCaptionTurn(
   }
 
   const opportunityId = conversation?.opportunityId ?? input.opportunityId ?? null;
-  const evidenceNotes = opportunityId ? await opportunityNotes(db, user, opportunityId) : [];
+  const trendItems = context.useTrends
+    ? await findTrendContext(db, `${originalInput}
+${input.message}`, { includeDemo: user.isDemo && cfg.demoEnabled })
+    : [];
+  const evidenceNotes = [
+    ...(opportunityId ? await opportunityNotes(db, user, opportunityId) : []),
+    ...trendContextNotes(trendItems),
+  ];
 
   const started = Date.now();
   let output;
@@ -140,6 +149,7 @@ export async function runCaptionTurn(
           }
         : null,
       evidenceNotes,
+      onProgress: opts.onProgress,
     });
   } catch (err) {
     const pe = err instanceof ProviderError ? err : new ProviderError("upstream_error", "Unexpected provider failure.", true);
@@ -147,7 +157,7 @@ export async function runCaptionTurn(
       userId: user.id,
       kind: "caption",
       provider: provider.name,
-      model: cfg.ai.model,
+      model: selectedModel(cfg),
       status: "error",
       errorCode: pe.code,
       latencyMs: Date.now() - started,
@@ -155,7 +165,7 @@ export async function runCaptionTurn(
     return { ok: false, error: { kind: "provider", code: pe.code, message: pe.message, retryable: pe.retryable } };
   }
 
-  const result = enforceConstraints(output.data, context);
+  const result = flagUnmetRequests(enforceConstraints(output.data, context), applied, history);
 
   if (!conversation) {
     conversation = await createConversation(db, user.id, {
@@ -172,6 +182,7 @@ export async function runCaptionTurn(
     text: "",
     result,
     mode: output.mode,
+    contextUsed: trendItems,
   }))!;
 
   await recordUsage(db, {
@@ -184,9 +195,26 @@ export async function runCaptionTurn(
     outputTokens: output.usage.outputTokens,
     latencyMs: Date.now() - started,
   });
-  await recordEvent(db, user.id, "caption_generated", { conversationId: conversation.id, mode: output.mode, live });
+  await recordEvent(db, user.id, "caption_generated", { conversationId: conversation.id, mode: output.mode, live: aiKind === "live", local: aiKind === "local" });
 
   return { ok: true, value: { conversationId: conversation.id, context, applied, userMessage, assistantMessage } };
+}
+
+/**
+ * Some requests can't be enforced deterministically (e.g. "shorter"). When the
+ * model visibly ignored one, say so instead of presenting it as done.
+ */
+export function flagUnmetRequests(result: CaptionResult, applied: string[], history: Message[]): CaptionResult {
+  if (!applied.includes("Length: short")) return result;
+  const prevMsg = [...history].reverse().find((m) => m.role === "assistant" && m.result);
+  const prev = prevMsg ? CaptionResultSchema.safeParse(prevMsg.result) : null;
+  if (!prev?.success) return result;
+  const avg = (r: CaptionResult) => r.variants.reduce((n, v) => n + v.caption.length, 0) / r.variants.length;
+  if (avg(result) < avg(prev.data) * 0.9) return result;
+  return {
+    ...result,
+    limitations: [...result.limitations, "These options are not shorter than the previous ones. Try “Aur short karo” again or edit them yourself."].slice(0, 6),
+  };
 }
 
 function titleFrom(text: string): string {

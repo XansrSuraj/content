@@ -43,9 +43,17 @@ export default async function SettingsPage(props: PageProps<"/app/settings">) {
           <p className="font-semibold">AI provider</p>
           {status.ai.kind === "live" ? (
             <p className="mt-1"><Badge tone="ok">Live AI configured</Badge> Model: <code>{status.ai.model}</code></p>
+          ) : status.ai.kind === "open" ? (
+            <p className="mt-1">
+              <Badge tone="ok">Open-source AI</Badge> Model <code>{status.ai.model}</code> via {status.ai.host}. Free tiers have daily limits; when reached, creators see a clear &quot;limit reached&quot; error.
+            </p>
+          ) : status.ai.kind === "local" ? (
+            <p className="mt-1">
+              <Badge tone="info">Local AI (development)</Badge> Ollama model <code>{status.ai.model}</code> at <code>{status.ai.baseUrl}</code>. Runs on this computer for free; quality is lower than the production model and it is checked on each request (if Ollama is stopped you&apos;ll see an error, not a template).
+            </p>
           ) : (
             <p className="mt-1">
-              <Badge tone="warn">Not configured</Badge> Missing: {status.ai.missing.join(", ")}. Caption Studio shows a labeled template preview until these are set on the server.
+              <Badge tone="warn">Not configured</Badge> {status.ai.note ?? `Missing: ${status.ai.missing.join(", ")}.`} Caption Studio shows a labeled template preview until an AI provider is set on the server.
             </p>
           )}
         </div>

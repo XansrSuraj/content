@@ -30,7 +30,7 @@ export function sameOrigin(req: Request): boolean {
   }
 }
 
-type Handler<T> = (user: SessionUser, body: T) => Promise<Response>;
+type Handler<T> = (user: SessionUser, body: T, req: Request) => Promise<Response>;
 
 /** Wraps a mutation: origin check, session auth, body size cap and zod validation. */
 export function mutation<S extends z.ZodType>(schema: S, handler: Handler<z.infer<S>>, maxBytes = 32_000) {
@@ -48,7 +48,7 @@ export function mutation<S extends z.ZodType>(schema: S, handler: Handler<z.infe
     }
     const parsed = schema.safeParse(body);
     if (!parsed.success) return apiError(400, "invalid", "Invalid request.", { issues: parsed.error.issues.slice(0, 5).map((i) => i.path.join(".")) });
-    return handler(user, parsed.data);
+    return handler(user, parsed.data, req);
   };
 }
 

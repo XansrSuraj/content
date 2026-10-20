@@ -3,6 +3,8 @@ import type { BriefContent, BriefRequest } from "@/lib/domain/briefs";
 
 export type ProviderErrorCode =
   | "not_configured"
+  /** Local provider (Ollama) not running, or the model is not installed. */
+  | "local_unavailable"
   | "timeout"
   | "upstream_rate_limited"
   | "upstream_error"
@@ -56,6 +58,8 @@ export interface CaptionRequest {
   creator: CreatorSnapshot | null;
   /** Opportunity/brief evidence the creator chose to bring in (titles + sources only). */
   evidenceNotes: string[];
+  /** Optional live progress (local streaming provider). Providers may ignore it. */
+  onProgress?: (p: { tokens: number; text: string }) => void;
 }
 
 export interface CaptionProvider {

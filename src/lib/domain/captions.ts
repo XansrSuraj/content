@@ -20,6 +20,8 @@ export const CaptionContextSchema = z.object({
   outputMode: z.enum(["full", "final_only"]).default("full"),
   /** Sticky creator instructions gathered from follow-ups, e.g. "less promotional". */
   notes: z.array(z.string().max(120)).max(8).default([]),
+  /** Give matching current search-interest observations to the model as context. */
+  useTrends: z.boolean().default(true),
 });
 export type CaptionContext = z.infer<typeof CaptionContextSchema>;
 
@@ -93,7 +95,7 @@ export const CaptionResultSchema = z.object({
 });
 export type CaptionResult = z.infer<typeof CaptionResultSchema>;
 
-export type GenerationMode = "live_ai" | "template_preview" | "example";
+export type GenerationMode = "live_ai" | "open_model" | "local_ai" | "template_preview" | "example";
 
 // ---------- Follow-up constraint extraction ----------
 
@@ -200,23 +202,64 @@ export function stripEmoji(text: string): string {
  * model drifts: emoji removal, locked first line, preserved terms check.
  * Returns the adjusted result plus notes that are surfaced as limitations.
  */
+/** Hashtags belong in the hashtag list; a trailing run inside the caption would be copied twice. */
+export function stripTrailingHashtags(caption: string): string {
+  return caption.replace(/(?:\s*#[\p{L}\p{M}\p{N}_]+)+\s*$/u, "").trim() || caption.trim();
+}
+
+/**
+ * Makes `locked` the first line, keeping whatever the model wrote after it.
+ * Handles the model repeating the locked sentence (with or without emoji) at
+ * the start of a longer first line.
+ */
+export function applyLockedFirstLine(caption: string, locked: string, emoji: CaptionContext["emoji"]): string {
+  const lockedOut = emoji === "none" ? stripEmoji(locked) : locked.trim();
+  const lines = caption.split(/\r?\n/);
+  const idx = lines.findIndex((l) => l.trim());
+  if (idx < 0) return lockedOut;
+  const first = lines[idx].trim();
+  const bare = (s: string) => stripEmoji(s).replace(/\s+/g, " ").trim();
+  let remainder = first;
+  if (first.startsWith(locked.trim())) remainder = first.slice(locked.trim().length);
+  else if (bare(first).startsWith(bare(locked))) remainder = bare(first).slice(bare(locked).length);
+  const body = [remainder.trim(), ...lines.slice(idx + 1)].join("\n").trim();
+  return body ? `${lockedOut}\n${body}` : lockedOut;
+}
+
+/** Engagement bait and invented stats the rules forbid. Small models still produce them sometimes. */
+const BAIT = [
+  /\b(comment|like|share|follow|subscribe|save)\s+(karo|kar\s*do|kijiye|karna|karein)\s*(,\s*)?(warna|varna|nahi\s*to|nahin\s*to)\b/i,
+  /\b(warna|varna)\s+(bad\s*luck|kuch\s*bura|7\s*saal)/i,
+  /\b(type|likho)\s+["“']?(yes|haan|amen|1)["”']?\s+(in|mein|me)\s+(the\s+)?comments?\b/i,
+  /\b\d{2,3}\s*%\s*(log|logon|people|of people)\b/i,
+];
+
+export function removeEngagementBait(caption: string): { text: string; removed: boolean } {
+  const bad = caption.split(/(?<=[.!?।…])\s+|\n/).filter((p) => BAIT.some((re) => re.test(p)));
+  if (!bad.length) return { text: caption, removed: false };
+  let text = caption;
+  for (const b of bad) text = text.replace(b, "");
+  text = text.replace(/[ \t]{2,}/g, " ").replace(/ +\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { text: text || caption, removed: Boolean(text) };
+}
+
 export function enforceConstraints(result: CaptionResult, ctx: CaptionContext): CaptionResult {
   const limitations = [...result.limitations];
-  let variants = result.variants.map((v) => ({ ...v }));
+  const baitIn: string[] = [];
+  let variants = result.variants.map((v) => {
+    const cleaned = removeEngagementBait(stripTrailingHashtags(v.caption));
+    if (cleaned.removed) baitIn.push(v.id);
+    return { ...v, caption: cleaned.text };
+  });
+  if (baitIn.length) limitations.push(`Removed engagement bait from option ${baitIn.join(", ")}.`);
 
-  if (ctx.emoji === "none") {
-    variants = variants.map((v) => ({ ...v, caption: stripEmoji(v.caption) }));
-  }
   if (ctx.keepFirstLine) {
     const locked = ctx.keepFirstLine.trim();
-    variants = variants.map((v) => {
-      const lines = v.caption.split(/\r?\n/);
-      const firstIdx = lines.findIndex((l) => l.trim());
-      if (firstIdx >= 0 && lines[firstIdx].trim() === locked) return v;
-      // Replace the model's opening line with the creator's locked line.
-      const rest = firstIdx >= 0 ? lines.slice(firstIdx + 1) : lines;
-      return { ...v, caption: [locked, ...rest].join("\n").trim() };
-    });
+    variants = variants.map((v) => ({ ...v, caption: applyLockedFirstLine(v.caption, locked, ctx.emoji) }));
+  }
+  // Emoji removal runs last so nothing (including a locked line) can reintroduce emoji.
+  if (ctx.emoji === "none") {
+    variants = variants.map((v) => ({ ...v, caption: stripEmoji(v.caption) }));
   }
   for (const term of ctx.preserveTerms) {
     const missing = variants.filter((v) => !v.caption.toLowerCase().includes(term.toLowerCase()));

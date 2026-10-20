@@ -19,6 +19,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   const items: NavItem[] = [
     { href: "/app", label: t(lang, "home"), icon: "⌂", mobile: true },
     { href: "/app/caption-studio", label: t(lang, "studio"), icon: "✎", mobile: true },
+    { href: "/app/trending", label: lang === "english" ? "Trending now" : "Abhi trending", icon: "↑", mobile: true },
     { href: "/app/opportunities", label: t(lang, "opportunities"), icon: "◎", mobile: true },
     { href: "/app/briefs", label: t(lang, "briefs"), icon: "▤", mobile: true },
     { href: "/app/saved", label: t(lang, "saved"), icon: "☆" },
@@ -64,8 +65,16 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
             <Badge tone="ok" title={`Model: ${status.ai.model}`}>
               Live AI configured
             </Badge>
+          ) : status.ai.kind === "open" ? (
+            <Badge tone="ok" title={`Open-weight model ${status.ai.model} via ${status.ai.host}`}>
+              Open-source AI · {status.ai.model.replace(/^.*\//, "")}
+            </Badge>
+          ) : status.ai.kind === "local" ? (
+            <Badge tone="info" title={`Ollama at ${status.ai.baseUrl} · not the production model`}>
+              Local AI (development) · {status.ai.model}
+            </Badge>
           ) : (
-            <Badge tone="warn" title={`Missing: ${status.ai.missing.join(", ")}`}>
+            <Badge tone="warn" title={status.ai.note ?? `Missing: ${status.ai.missing.join(", ")}`}>
               AI not configured · template preview
             </Badge>
           )}

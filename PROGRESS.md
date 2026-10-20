@@ -31,5 +31,71 @@ Keep this file current so work can resume across sessions.
 - Real Wikimedia ingestion: 60 fetched; the second run was skipped by the freshness check. A filter gap was found (adult titles, localized namespace pages) and fixed, with tests.
 - Not verified: live Anthropic generation, the YouTube API (no credentials).
 
+## Session 2 (2026-10-20): free local AI, caption eval, Google Trends RSS
+- **Ollama provider** (`src/lib/providers/ai/ollama.ts`): `AI_PROVIDER=ollama`, JSON-schema `format`, the same strict zod validation, one repair attempt, and recoverable errors (`local_unavailable`, `timeout`, `invalid_output`). It never swaps in the template. UI label: "Local AI (development)". Model: `llama3.2:3b` (2.0 GB; Meta lists Hindi as supported). Installed Ollama 0.40.6 via winget.
+  - **Verified:** Ollama down → the UI shows "Local AI unavailable" + Retry, with 0 template outputs.
+- **Caption eval** (`npm run eval:captions`, writes to `eval-output/`, gitignored, not in CI). Baseline and post-change runs on llama3.2:3b (CPU only, Ryzen 7735HS):
+
+  | Metric | Baseline | After changes |
+  |---|---|---|
+  | Turns passing validation | 11/11 | 9/11 |
+  | Median latency | 86 s | 110 s |
+
+  The 2 failures were 180 s timeouts while the app was using the model at the same time. Ollama serves one request at a time.
+  - **Bugs found and fixed (with tests):**
+    - a locked first line re-added emoji after "emoji hata do";
+    - the lock dropped the rest of the model's first line, so all three options became just that line;
+    - hashtags were duplicated inside caption text;
+    - "shorter" requests that the model ignored are now flagged instead of hidden.
+  - **Prompt changes:**
+    - Shared: write in the creator's voice, keep stated facts (aaj/kal), make options differ, clarify what a locked first line means, apply follow-ups visibly, no platform-performance claims, no hashtags in caption text.
+    - Ollama only: an end-of-prompt checklist.
+    - A copyable example sentence leaked into outputs; it was removed.
+  - **Model limits (not prompt issues):** clumsy Hinglish grammar, options too similar, occasional invented details. Hindi Devanagari was correct.
+- **Google Trends "Trending now" RSS** (`google-trends-rss.ts`, `SOURCE_GOOGLE_TRENDS_RSS_ENABLED`):
+  - **Feed:** the official export, fetched anonymously.
+  - **Terms:** robots.txt allows the path. Google says Trends info may be used "subject to the Google Terms of Service", with the citation "Data source: Google Trends". Commercial display at scale is not explicitly covered, so it needs legal review.
+  - **Ingest:** 10 real observations stored with correct `observed_at` (feed pubDate), geo IN, `expires_at` (+7 days), and no hashtags. It can never verify a hashtag.
+  - **Feed:** one item curated through `/admin` appears in the Ideas feed with honest evidence.
+- **Checks:** lint clean, typecheck clean, 75 unit tests passing, build OK, `check:bundle` OK, Playwright 6/6 on a production build.
+
+## Session 3 (2026-10-20): speed, trend-aware captions, Trending now
+- **Speed** (measured on the same request): 96 s → 42 s with `llama3.2:3b`. The first caption text is visible after ~4–15 s via streaming.
+  - Enabled the Radeon 680M iGPU: user env `OLLAMA_IGPU_ENABLE=1`; Ollama now runs the model 100% on GPU (Vulkan). To undo, delete the variable and restart Ollama.
+  - Compact local output format (`LocalCaptionSchema`, expanded and validated by code).
+  - No pasted JSON schema in the prompt.
+  - `num_ctx` 4096; output budget by requested length (600/900/1200, +300 for Devanagari); `keep_alive` 30m.
+  - Streaming: NDJSON from `/api/captions/turn` (`Accept: application/x-ndjson`) with a live Option A preview.
+  - `llama3.2:1b` tested: 2× faster but it changed the topic in Hindi and invented advice. Rejected as default (still downloaded).
+- **Trend-aware captions** (`src/lib/services/trend-context.ts`):
+  - Matches the caption text against fresh (48 h) Google Trends RSS + Wikipedia observations.
+  - Refreshes Google RSS when older than 2 h (6 s cap).
+  - Matches go to the model labeled "search interest, not social virality"; stored in `messages.context_used` (migration 0001) and shown as "Trend context used".
+  - Violent/tragic titles are excluded (`needsReview`). Toggle: "Use current trends as context".
+- **Trending now page** (`/app/trending`): fresh real trends with one-click Caption/Brief. Sensitive items are hidden with a count. The prefill asks the creator for their own angle.
+- **Packaging check** per option: opening-line length, hashtag count vs the platform rule, current-topic mention. Labeled "not a prediction". No virality probability is shown, by design.
+- **Engagement-bait filter:** e.g. "Comment karo warna…", "99% log…" are removed and reported as a limitation.
+- **Checks:** lint clean, typecheck clean, 87 unit tests, build OK, `check:bundle` OK, Playwright 7/7 (production build). Live run on Ollama+GPU: trending page → caption with trend context in ~45–100 s.
+
+## Session 4 (2026-10-20): reliability fix + production readiness
+- **Bug fixed:** "Something went wrong" while generating. The long-running dev server never applied migration 0001 (new column), so every save failed.
+  - Dev/embedded DB now auto-applies new migrations on access. Production still migrates explicitly.
+  - Stream errors are now logged (type + stack, no captions). Verified on the user's running server without restart: caption in 31 s.
+- **Open-source AI for production:** `src/lib/providers/ai/openai-compatible.ts` (`AI_PROVIDER=groq`).
+  - Strict JSON schema, bearer auth, `reasoning_effort=low` for gpt-oss, repair once, typed errors (auth / 429 / 404 / 5xx / network / timeout).
+  - Wire-tested against Ollama's /v1. 7 unit tests.
+  - UI label "Open-source AI"; mode `open_model`.
+- **Production kit:**
+  - `/api/health`.
+  - Production refuses the embedded DB without `DATABASE_URL`.
+  - `render.yaml`: build with dev deps, migrate on start, health check.
+  - `.node-version`, an optional GitHub Actions trend refresh, and `DEPLOY.md` (Groq + Neon + Render, all free).
+- **Production rehearsal (local):** `NODE_ENV=production` + real Postgres protocol (`@electric-sql/pglite-socket`) + `npm run db:migrate` + `next start`.
+  - Health OK; Playwright 7/7.
+  - Live caption via the open-model provider with trend refresh; guard verified.
+- **Not verifiable here:** real Groq key, Neon, Render (needs the owner's free accounts).
+
 ## Next steps
-See docs/FUTURE.md → "Next priorities".
+- Multi-platform pack (Reels caption + Shorts title/description in one go) once generation is faster.
+- Optional bigger local model on GPU (e.g. a 7B) if RAM allows; compare with the eval.
+- See docs/FUTURE.md → "Next priorities".

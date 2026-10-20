@@ -101,7 +101,8 @@ test("real creator opens Caption Studio directly and sees honest unconfigured st
   await sendCaption(page, "Aaj maine apne budget phone se cinematic video shoot kiya. Instagram ke liye better Hinglish caption do.");
   await expect(page.getByText("Template preview — not AI").first()).toBeVisible();
   await expect(page.getByText("Relevant hashtag suggestions. Current trend status not verified.")).toBeVisible();
-  await expect(page.getByText(/\btrending\b/i)).toHaveCount(0);
+  // No trend claims in generated content (the "Abhi trending" nav link sits outside <main>).
+  await expect(page.locator("main").getByText(/\btrending\b/i)).toHaveCount(0);
 
   // Rename and delete the conversation
   await page.waitForURL(/c=/);
@@ -201,4 +202,16 @@ test("core layouts work on mobile", async ({ browser }) => {
   expect(overflow2).toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${SHOTS}/mobile-opportunities.png`, fullPage: true });
   await ctx.close();
+});
+
+test("trending page explains how to enable the free source when it is off", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try the demo" }).first().click();
+  await page.waitForURL(/onboarding/);
+  await page.getByRole("button", { name: /Skip for now/ }).click();
+  await page.waitForURL(/caption-studio/);
+  await page.goto("/app/trending");
+  await expect(page.getByRole("heading", { name: "Trending now" })).toBeVisible();
+  await expect(page.getByText("not Instagram, YouTube or TikTok")).toBeVisible();
+  await expect(page.getByText("No trend source is turned on")).toBeVisible();
 });

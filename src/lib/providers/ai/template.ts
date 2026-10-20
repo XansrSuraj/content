@@ -17,7 +17,7 @@ import type {
  * Placeholders in [square brackets] are for the creator to fill in.
  */
 
-const STOPWORDS = new Set(
+export const STOPWORDS = new Set(
   (
     "a an the and or but if to of in on for with is are was were be been this that these those it its i me my mine we our you your " +
     "he she they them his her their what which who how why when where do does did done can could should would will just very so " +
@@ -140,7 +140,7 @@ export class TemplateCaptionProvider implements CaptionProvider {
       keywords: keywords.slice(0, 4),
       improvements: ["Adds a structure: hook, one concrete detail, and a goal-matched call to action."],
       limitations: [
-        "Template output only. To get real rewrites, configure ANTHROPIC_API_KEY and ANTHROPIC_MODEL on the server.",
+        "Template output only. For real rewrites, set AI_PROVIDER=ollama (free, local) or ANTHROPIC_API_KEY + ANTHROPIC_MODEL on the server.",
       ],
     };
     return {

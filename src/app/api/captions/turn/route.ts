@@ -1,34 +1,86 @@
 import { getDb } from "@/lib/db/client";
+import type { SessionUser } from "@/lib/auth/session";
 import { apiError, json, mutation } from "@/lib/api";
-import { CaptionTurnSchema, hashtagStatusesFor, runCaptionTurn } from "@/lib/services/captions";
+import { CaptionTurnSchema, hashtagStatusesFor, runCaptionTurn, type CaptionTurnInput, type TurnError } from "@/lib/services/captions";
 import { toClientMessage } from "@/lib/services/serialize";
+import { previewFromPartial } from "@/lib/providers/ai/ollama";
 
-export const maxDuration = 90;
+export const maxDuration = 300;
 
-export const POST = mutation(CaptionTurnSchema, async (user, body) => {
-  const db = await getDb();
-  const res = await runCaptionTurn(db, user, body);
-  if (!res.ok) {
-    const e = res.error;
-    switch (e.kind) {
-      case "validation":
-        return apiError(400, "invalid", e.message);
-      case "not_found":
-        return apiError(404, "not_found", "Conversation not found.");
-      case "quota":
-        return apiError(429, "quota", e.message, { retryAfterSeconds: e.retryAfterSeconds });
-      case "provider":
-        return apiError(e.code === "auth_error" ? 503 : 502, e.code, e.message, { retryable: e.retryable });
-    }
+function errorPayload(e: TurnError): { status: number; body: { code: string; message: string; [k: string]: unknown } } {
+  switch (e.kind) {
+    case "validation":
+      return { status: 400, body: { code: "invalid", message: e.message } };
+    case "not_found":
+      return { status: 404, body: { code: "not_found", message: "Conversation not found." } };
+    case "quota":
+      return { status: 429, body: { code: "quota", message: e.message, retryAfterSeconds: e.retryAfterSeconds } };
+    case "provider":
+      return {
+        status: e.code === "auth_error" || e.code === "local_unavailable" ? 503 : 502,
+        body: { code: e.code, message: e.message, retryable: e.retryable },
+      };
   }
+}
+
+async function runTurn(user: SessionUser, body: CaptionTurnInput, onProgress?: (p: { tokens: number; text: string }) => void) {
+  const db = await getDb();
+  const res = await runCaptionTurn(db, user, body, undefined, { onProgress });
+  if (!res.ok) return { ok: false as const, ...errorPayload(res.error) };
   const { value } = res;
   const result = toClientMessage(value.assistantMessage).result;
   const statuses = result ? await hashtagStatusesFor(db, user, result, value.context.platform) : [];
-  return json({
-    conversationId: value.conversationId,
-    context: value.context,
-    applied: value.applied,
-    userMessage: toClientMessage(value.userMessage),
-    assistantMessage: toClientMessage(value.assistantMessage, statuses),
-  });
-}, 40_000);
+  return {
+    ok: true as const,
+    payload: {
+      conversationId: value.conversationId,
+      context: value.context,
+      applied: value.applied,
+      userMessage: toClientMessage(value.userMessage),
+      assistantMessage: toClientMessage(value.assistantMessage, statuses),
+    },
+  };
+}
+
+/**
+ * Default: one JSON response. With `Accept: application/x-ndjson` the response
+ * streams `{"type":"progress"}` lines (token count + live preview of option A)
+ * and ends with `{"type":"result"}` or `{"type":"error"}`.
+ */
+export const POST = mutation(
+  CaptionTurnSchema,
+  async (user, body, req) => {
+    if (!req.headers.get("accept")?.includes("application/x-ndjson")) {
+      const out = await runTurn(user, body);
+      return out.ok ? json(out.payload) : apiError(out.status, out.body.code, out.body.message, out.body);
+    }
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        let lastSent = 0;
+        try {
+          const out = await runTurn(user, body, ({ tokens, text }) => {
+            const now = Date.now();
+            if (now - lastSent < 400) return;
+            lastSent = now;
+            send({ type: "progress", tokens, preview: previewFromPartial(text).slice(0, 600) });
+          });
+          if (out.ok) send({ type: "result", ...out.payload });
+          else send({ type: "error", status: out.status, error: out.body });
+        } catch (err) {
+          // Error type and stack only — request bodies (captions) are never logged.
+          console.error("[captions/turn] unexpected error:", err instanceof Error ? err.stack ?? err.message : String(err));
+          send({ type: "error", status: 500, error: { code: "server_error", message: "Something went wrong on the server. Please retry.", retryable: true } });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
+    });
+  },
+  40_000,
+);

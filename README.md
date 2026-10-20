@@ -61,6 +61,71 @@ There's no database to install. Without `DATABASE_URL`, the app uses **embedded 
 
 ---
 
+## Production deployment (free)
+
+See **[DEPLOY.md](DEPLOY.md)** for a step-by-step free deployment:
+
+- **AI:** Groq for open-source models (`AI_PROVIDER=groq`).
+- **Database:** Neon Postgres.
+- **Website:** a Render free web service, configured by `render.yaml`.
+
+`/api/health` reports DB, AI and source status for uptime checks.
+
+## Free local AI with Ollama (no keys, no account)
+
+For development you can run captions and briefs on your own computer with [Ollama](https://ollama.com/download):
+
+```bash
+winget install --id Ollama.Ollama -e     # Windows (or download from ollama.com/download)
+ollama pull llama3.2:3b                   # ~2.0 GB, officially supports Hindi
+```
+
+Then in `.env.local`:
+```
+AI_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2:3b                 # default
+OLLAMA_BASE_URL=http://localhost:11434   # default
+```
+
+Restart `npm run dev`. The UI labels everything from this provider **"Local AI (development)"**, so it's never confused with the production model.
+
+- **Same validation:** output goes through the same structured-JSON + strict zod validation as Anthropic.
+- **Broken JSON:** small models often break structure, so there's one repair attempt before a recoverable error.
+- **If Ollama is stopped or the model isn't installed:** you get a clear "Local AI unavailable" error with Retry, never a silent template swap.
+- **Speed:** captions stream live; the first option appears within seconds.
+  - On a CPU, a full answer takes ~1–2 minutes. On an integrated AMD/Intel GPU it's ~40 s.
+  - To use an integrated GPU, set the Windows user environment variable `OLLAMA_IGPU_ENABLE=1` and restart Ollama. `ollama ps` should then show "GPU".
+  - Raise `OLLAMA_TIMEOUT_MS` if needed.
+- **Quality:** noticeably weaker than a hosted model (see the eval notes in PROGRESS.md). Use it to develop and test flows, not to judge final caption quality.
+
+`AI_PROVIDER` values:
+
+| Value | Behaviour |
+|---|---|
+| `groq` / `openai_compatible` | Hosted open-weight model (default Groq `openai/gpt-oss-20b`), strict JSON output — **use this for production** |
+| *(empty)* | Original behaviour: Anthropic when `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` are set, otherwise the labeled template preview |
+| `anthropic` | Same as empty |
+| `ollama` | Local model via Ollama; errors if unreachable |
+| `template` | Force the labeled template preview |
+
+### Trend-aware captions and "Trending now"
+
+With `SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true`, Caption Studio matches your topic against fresh Google Trends (and Wikipedia, if enabled) observations. Matches are given to the AI as *search-interest* context and listed under **Trend context used**. **Abhi trending** (`/app/trending`) lists today's real searches in India with one-click Caption/Brief. Violent or tragic news is held back for human judgment. Each option shows a **Packaging check** (opening-line length, hashtag count vs. the platform rule, current-topic mention). TrendSaathi deliberately shows **no "viral probability"**: nobody can predict virality, and a made-up number would mislead creators.
+
+### Caption eval (manual, never in CI)
+
+```bash
+AI_PROVIDER=ollama npm run eval:captions                 # all cases
+npm run eval:captions -- --only=hindi,followups          # subset
+```
+
+The eval runs fixed cases through the real caption service (in-memory DB) and writes `eval-output/captions-<timestamp>.md` (gitignored). The cases cover Hinglish, Hindi Devanagari, comedy, kids/English, cricket, a pasted caption, and a follow-up chain. The report includes:
+
+- latency per turn
+- whether output passed validation
+- checks that follow-up constraints stuck
+- heuristic quality flags: similar options, hype words, invented numbers, script checks, long hooks
+
 ## Enabling live AI
 
 1. Create an Anthropic API key (console.anthropic.com).
@@ -97,7 +162,8 @@ See [.env.example](.env.example) for the full list with comments. Key groups:
 - **Database:** `DATABASE_URL` (Postgres), `PGLITE_DATA_DIR`, `DATABASE_SSL`, `DATABASE_SSL_STRICT`, `DATABASE_POOL_MAX`
 - **AI:** see above
 - **Limits:** `AI_REQUESTS_PER_USER_PER_MINUTE`, `AI_REQUESTS_PER_USER_PER_DAY`, `DEMO_AI_REQUESTS_PER_USER_PER_DAY`, `AUTH_ATTEMPTS_PER_IP_PER_15_MIN`
-- **Sources:** `SOURCE_WIKIMEDIA_ENABLED`, `WIKIMEDIA_USER_AGENT`, `YOUTUBE_API_KEY`
+- **AI provider:** `AI_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS`, `OLLAMA_NUM_CTX`, `OLLAMA_MAX_OUTPUT_TOKENS`
+- **Sources:** `SOURCE_WIKIMEDIA_ENABLED`, `WIKIMEDIA_USER_AGENT`, `SOURCE_GOOGLE_TRENDS_RSS_ENABLED`, `TRENDSAATHI_USER_AGENT`, `YOUTUBE_API_KEY`
 - **Jobs:** `INGEST_SECRET` (≥ 32 chars; the endpoint is disabled without it)
 
 ---
@@ -118,11 +184,12 @@ Entities: users, sessions, creator profiles (preferences), consents, sources, in
 | Source | Status | What it can and can't say |
 |---|---|---|
 | **Wikipedia pageviews (Wikimedia), India** | Works without a key. Enable with `SOURCE_WIKIMEDIA_ENABLED=true` and a descriptive `WIKIMEDIA_USER_AGENT` that includes **your** contact URL or email | Daily most-read articles by readers in India. This is *reading interest*, not social-media popularity, and it can never mark a hashtag as observed. Navigation pages, localized namespace pages and adult titles are filtered out. Confirm Wikimedia's terms for your commercial use |
+| **Google search interest (India) — Trending now RSS** | Works without a key. Enable with `SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true`. **Verified live** | About 10 Google searches in India with a recent surge in interest, from Google Trends' official RSS export, with Google's approximate-traffic bucket (e.g. "2,000+"). This is *search interest*, not social or hashtag popularity, and it can never mark a hashtag as observed. It's fetched anonymously (no cookies) at most every 2 hours, and rows expire after 7 days. Citation shown: "Data source: Google Trends". Google allows use of Trends information "subject to the Google Terms of Service"; commercial display at scale isn't explicitly addressed, so get legal review before launch |
 | **YouTube Most Popular chart (India)** | Needs `YOUTUBE_API_KEY` | Up to 50 chart videos at retrieval time, with titles and hashtags from titles/descriptions. Rows expire after 30 days to follow YouTube API policy. No derived scores; YouTube is attributed as the source. Not Shorts-specific. **Not verified live** (no key was available) |
 | Instagram hashtag search | Not connected | Needs a professional account plus Meta App Review (Instagram Public Content Access). It returns media for a tag, not popularity |
 | TikTok | Not connected | Not available in India; the Research API is for non-commercial research only |
 | Facebook | Not connected | No permitted public trend endpoint |
-| Google Trends | Not connected | API access is a limited alpha |
+| Google Trends API | Not connected | API access is a limited alpha (the keyless RSS feed above is used instead) |
 | Trending audio | Not connected | Needs a licensed provider |
 
 No scraping is implemented. Real observations become feed opportunities only after an admin curates them in `/admin`, writing the summary, fit and original angles. Evidence confidence is computed from the attached observations, and momentum is shown only when at least two comparable observations exist (same source, item and geography).
@@ -162,6 +229,8 @@ npm test                 # vitest: unit + integration against in-memory Postgres
 npm run build
 npm run check:bundle     # scans .next/static for secret values and server-only code markers
 npm run test:e2e         # Playwright (starts or reuses the dev server); E2E_BASE_URL=... to target another server
+# Production rehearsal on real Postgres protocol (no install): npx pglite-server --db=.data/rehearsal --port=54329 --max-connections=10
+#   then DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54329/postgres DATABASE_SSL=false npm run db:migrate && npm run build && npm start
 ```
 
 The tests focus on the riskiest areas:
