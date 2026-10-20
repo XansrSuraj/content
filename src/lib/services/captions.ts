@@ -66,7 +66,7 @@ function compactResult(r: CaptionResult): string {
 
 /** Targeted repair attempts after the first answer (bounded so free quotas last). */
 const MAX_REPAIRS = 2;
-const REPAIR_CODES = new Set(["result_claim", "unsupported_number", "extra_entity", "banned_claim", "timing_claim", "missing_field"]);
+const REPAIR_CODES = new Set(["result_claim", "unsupported_number", "extra_entity", "banned_claim", "timing_claim", "missing_field", "duplicate_option"]);
 
 export function historyFromMessages(msgs: Message[]): CaptionTurn[] {
   const turns: CaptionTurn[] = [];

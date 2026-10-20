@@ -41,7 +41,11 @@ export function matchNotes(s: MatchSnapshot, timeZone: string, publishAt: Date |
   const notes = [
     `MATCH (from ${by}; status checked ${s.statusCheckedAt}): ${s.homeName} vs ${s.awayName}, ${s.competition}, scheduled start ${ist(s.startsAt, timeZone)}. Verified stage: ${s.stage}.`,
   ];
-  if (s.stage === "completed" && s.resultSummary) notes.push(`MATCH RESULT (from ${by}): ${s.resultSummary}`);
+  // Only a live-status provider's result counts as a fact; community/schedule data is not verified.
+  if (s.stage === "completed" && s.resultSummary && s.statusSource === "provider") notes.push(`MATCH RESULT (from ${by}): ${s.resultSummary}`);
+  else if (s.stage === "completed" && s.resultSummary) {
+    notes.push(`MATCH RESULT NOT VERIFIED: ${by} lists a result, but it is not from a live-status provider. Do not state the score or winner; talk about the video's moments in general terms.`);
+  }
   notes.push(`MATCH RULE: ${STAGE_GUIDANCE[s.stage]}`);
   if (publishAt && s.stage === "upcoming" && publishAt.getTime() >= new Date(s.startsAt).getTime()) {
     notes.push("PUBLISH TIME: the creator will post after the scheduled start. Do not write it as a pre-match preview; keep timing words neutral.");
@@ -124,7 +128,7 @@ export async function buildSportsContext(
     : null;
   if (question) {
     notes.push(
-      `UNCLEAR SUBJECT: "${question.alias ?? "the subject"}" could mean ${question.options.map((o) => o.name).join(", ")}. Do not name any one of them as fact; keep wording general and use clarifyingQuestion to ask which one.`,
+      `UNCLEAR SUBJECT: "${question.alias ?? "the subject"}" could mean ${question.options.map((o) => o.name).join(", ")}. Do not name any one of them as fact; keep wording general and use clarifyingQuestion to ask which one. Still write every platform entry with all three options (general wording).`,
     );
   }
 

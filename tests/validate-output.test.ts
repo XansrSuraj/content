@@ -9,11 +9,17 @@ import { sampleModelOutput } from "./fixtures";
 
 const caption = "RCB vs MI kal khelenge, mera preview video. Kohli ki form dekhni hai";
 
-function resultWith(platform: string, opt: { caption?: string; title?: string; description?: string; hashtags?: string[] }): CaptionResult {
+const SUFFIX = { original_improved: "", search_focused: " Dekhte hain.", conversation_focused: " Batao." } as const;
+
+function resultWith(platform: string, opt: { caption?: string; title?: string; description?: string; hashtags?: string[]; same?: boolean }): CaptionResult {
   const base = sampleModelOutput();
-  const o = (kind: "original_improved" | "search_focused" | "conversation_focused") => ({
-    kind, title: opt.title ?? "", description: opt.description ?? "", caption: opt.caption ?? "", hashtags: opt.hashtags ?? ["#RCBvsMI"], why: "w",
-  });
+  // Options differ by a neutral sentence unless `same` asks for identical ones.
+  const o = (kind: keyof typeof SUFFIX) => {
+    const end = opt.same ? "" : SUFFIX[kind];
+    return {
+      kind, title: opt.title ?? "", description: opt.description ? opt.description + (opt.caption ? "" : end) : "", caption: opt.caption ? opt.caption + end : "", hashtags: opt.hashtags ?? ["#RCBvsMI"], why: "w",
+    };
+  };
   return CaptionResultSchema.parse({
     ...base,
     platforms: [{ platform, recommended: "original_improved", options: [o("original_improved"), o("search_focused"), o("conversation_focused")] }],
@@ -137,5 +143,14 @@ describe("posting after kick-off", () => {
     const r = resultWith("instagram_reels", { caption: "RCB vs MI ka match 7:30 pm se start hoga. Aapka prediction?" });
     expect(codes(r, ctx({ stage: "unknown", postAfterStart: true, evidenceText: "7:30 pm" }))).toContain("timing_claim");
     expect(codes(r, ctx({ stage: "upcoming", postAfterStart: false, evidenceText: "7:30 pm" }))).not.toContain("timing_claim");
+  });
+});
+
+describe("eval-found gaps", () => {
+  it("a stated score inside a question is still a result claim", () => {
+    expect(codes(resultWith("instagram_reels", { caption: "Real ne Barca ko 2-1 se haraya, kya match tha?" }), ctx({ intent: parseSportsIntent("Real vs Barca El Clasico reaction"), matchTeamIds: [] }))).toContain("result_claim");
+  });
+  it("identical options are flagged", () => {
+    expect(codes(resultWith("instagram_reels", { caption: "RCB vs MI kal! Aapka prediction kya hai?", same: true }))).toContain("duplicate_option");
   });
 });

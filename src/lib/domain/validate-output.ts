@@ -14,7 +14,8 @@ export type IssueCode =
   | "too_long"
   | "platform_wording"
   | "banned_claim"
-  | "hashtag_issue";
+  | "hashtag_issue"
+  | "duplicate_option";
 
 export interface ValidationIssue {
   code: IssueCode;
@@ -62,6 +63,9 @@ const EXPERIENCE: RegExp[] = [/\b(i was at the stadium|stadium mein (tha|thi|the
 const FUTURE_START = /\b(will start|starts at|starting at|kicks off at|start hoga|shuru hoga|hone wala hai|hone wali hai|kal hoga|aaj hoga|kal khelenge|kal khela jayega)\b|शुरू होगा|कल होगा|आज होगा|खेला जाएगा/i;
 
 const DEVA = /[ऀ-ॿ]/;
+
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const optionMain = (o: ResultOption) => o.caption || o.description || o.title;
 
 function sentences(text: string): string[] {
   return text
@@ -117,7 +121,9 @@ export function validateResult(result: CaptionResult, ctx: ValidationContext): V
             if (extraTeam || extraPlayer) push("extra_entity", field, `names ${extraTeam ?? extraPlayer}, which is not in the video`, s);
           }
           // A question ("who wins this one?", "kaun jeetega?") is not a result claim.
-          const question = /\?\s*$/.test(s) && /\b(who|which|will|kaun|kis|kya)\b|कौन|क्या/i.test(s);
+          // Only "who/which … win?" questions without a score ("Arsenal vs Everton: who wins?") are exempt;
+          // "2-1 se haraya, kya match tha?" still states a result.
+          const question = /\?\s*$/.test(s) && /\b(who|which|kaun|kis)\b|कौन/i.test(s) && !SCORE_LIKE.test(s) && !/\b(won|beat|haraya|hara diya|jeet gaye)\b/i.test(s);
           if (!resultAllowed && !question && (RESULT_CLAIM.test(s) || (ctx.intent.sport && SCORE_LIKE.test(s) && !SCORE_LIKE.test(ctx.sourceText)))) {
             push("result_claim", field, "states a result or score that is not verified", s);
           }
@@ -135,6 +141,10 @@ export function validateResult(result: CaptionResult, ctx: ValidationContext): V
           if (ctx.language === "hinglish" && DEVA.test(s) && !sourceHasDeva) push("language_mix", field, "Devanagari in a Hinglish output", s);
           if (ctx.language === "hindi" && !DEVA.test(s) && (s.match(/[A-Za-z]{2,}/g) ?? []).length >= 5) push("language_mix", field, "an English sentence in a Hindi output", s);
         }
+      }
+      const own = norm(optionMain(o));
+      if (own && p.options.some((x) => x !== o && x.kind < o.kind && norm(optionMain(x)) === own)) {
+        push("duplicate_option", adapter.fields.includes("caption") ? "caption" : "description", "is identical to another option — each option needs a different approach");
       }
       const lower = o.hashtags.map((t) => t.toLowerCase());
       if (new Set(lower).size !== lower.length) push("hashtag_issue", "hashtags", "duplicate hashtags");
