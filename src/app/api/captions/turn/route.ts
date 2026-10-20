@@ -4,6 +4,7 @@ import { apiError, json, mutation } from "@/lib/api";
 import { CaptionTurnSchema, hashtagStatusesFor, runCaptionTurn, type CaptionTurnInput, type TurnError } from "@/lib/services/captions";
 import { toClientMessage } from "@/lib/services/serialize";
 import { previewFromPartial } from "@/lib/providers/ai/ollama";
+import { finishTurn, markTurnSaved, registerTurn } from "@/lib/services/turn-registry";
 
 export const maxDuration = 300;
 
@@ -30,9 +31,23 @@ async function runTurn(
   signal?: AbortSignal,
 ) {
   const db = await getDb();
-  const res = await runCaptionTurn(db, user, body, undefined, { onProgress, signal });
-  if (!res.ok) return { ok: false as const, ...errorPayload(res.error) };
+  // Stop works through the explicit cancel endpoint too (proxies may not forward disconnects).
+  const controller = body.turnId ? registerTurn(body.turnId, user.id) : null;
+  const combined = controller ? (signal ? AbortSignal.any([signal, controller.signal]) : controller.signal) : signal;
+  const res = await runCaptionTurn(db, user, body, undefined, { onProgress, signal: combined });
+  if (!res.ok) {
+    if (body.turnId) finishTurn(body.turnId);
+    return { ok: false as const, ...errorPayload(res.error) };
+  }
   const { value } = res;
+  if (body.turnId) {
+    markTurnSaved(body.turnId, {
+      conversationId: value.conversationId,
+      messageIds: [value.userMessage.id, value.assistantMessage.id],
+      createdConversation: !body.conversationId,
+    });
+    finishTurn(body.turnId);
+  }
   const result = toClientMessage(value.assistantMessage).result;
   const statuses = result ? await hashtagStatusesFor(db, user, result, value.context.platform) : [];
   return {

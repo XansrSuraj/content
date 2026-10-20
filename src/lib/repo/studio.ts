@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
 import { captionVariants, conversations, messages, type TrendContextItem } from "@/lib/db/schema";
 import type { CaptionContext, CaptionResult, GenerationMode } from "@/lib/domain/captions";
@@ -67,6 +67,18 @@ export async function updateConversation(
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .returning();
   return rows[0] ?? null;
+}
+
+/** Deletes specific messages of an owned conversation (used when a creator stops a turn that was already saved). */
+export async function deleteMessages(db: DB, userId: string, conversationId: string, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const conv = await getConversation(db, userId, conversationId);
+  if (!conv) return 0;
+  const rows = await db
+    .delete(messages)
+    .where(and(eq(messages.conversationId, conversationId), inArray(messages.id, ids)))
+    .returning({ id: messages.id });
+  return rows.length;
 }
 
 export async function deleteConversation(db: DB, userId: string, id: string): Promise<boolean> {

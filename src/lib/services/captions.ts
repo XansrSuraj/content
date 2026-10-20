@@ -33,6 +33,8 @@ export const CaptionTurnSchema = z.object({
   /** Full context from the editable panel. Optional on follow-ups. */
   context: CaptionContextSchema.partial().optional(),
   opportunityId: z.string().max(64).nullable().default(null),
+  /** Client-generated id so the creator can cancel this turn (Stop). */
+  turnId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional(),
 });
 export type CaptionTurnInput = z.infer<typeof CaptionTurnSchema>;
 

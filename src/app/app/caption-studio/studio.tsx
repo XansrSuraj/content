@@ -80,6 +80,7 @@ export function Studio(props: {
   const programmaticRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const turnRef = useRef<string | null>(null);
   const lang = props.uiLanguage;
   const isEmpty = messages.length === 0;
   const platform = getPlatform(context.platform);
@@ -140,6 +141,16 @@ export function Studio(props: {
   }
 
   function stop() {
+    const turnId = turnRef.current;
+    // Tell the server explicitly (proxies may not forward a disconnect), then drop the stream.
+    if (turnId) {
+      fetch("/api/captions/turn/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ turnId }),
+        keepalive: true,
+      }).catch(() => undefined);
+    }
     abortRef.current?.abort();
   }
 
@@ -162,13 +173,15 @@ export function Studio(props: {
     setLive({ tokens: 0, preview: "", startedAt: Date.now() });
     const controller = new AbortController();
     abortRef.current = controller;
+    const turnId = crypto.randomUUID();
+    turnRef.current = turnId;
 
     const dropTemp = () => setMessages((m) => m.filter((x) => x.id !== tempId));
     try {
       const res = await fetch("/api/captions/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-        body: JSON.stringify({ conversationId, message: text, context: ctx, opportunityId: props.opportunityId }),
+        body: JSON.stringify({ conversationId, message: text, context: ctx, opportunityId: props.opportunityId, turnId }),
         signal: controller.signal,
       });
       // Errors before streaming starts (auth, validation, origin) come back as plain JSON.
@@ -237,6 +250,7 @@ export function Studio(props: {
       }
     } finally {
       abortRef.current = null;
+      turnRef.current = null;
       setPending(false);
       setLive(null);
       if (window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus();
