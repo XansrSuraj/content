@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 2 — Match data providers (Phase 0 approved by owner 2026-10-20; Phase 1 done)
+**Current phase:** 3 — Evidence bundle + relevance gates (Phases 0–2 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-20
 
@@ -194,3 +194,28 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
   - post after kick-off; postponed, cancelled and stale status;
   - common-word aliases; seed sync.
 - **Open issue for Phase 2:** the same match from two providers must merge into one canonical row (otherwise it would look like "same teams twice").
+
+## Phase 2 — Match data providers: DONE (2026-10-20)
+- **Common adapter `MatchProvider`** (`src/lib/providers/sports/connectors.ts`):
+  - Methods: `listFixtures(range)` and `getMatch(providerId)`; `health()` is the catalog's `sourceStatus` (enabled / requires configuration).
+  - Each provider declares its budget (day/minute), its intervals (normal / in-play) and whether it reports live status.
+- **`getJson` semantics:** 404 = empty; 429 = `RateLimitedError` carrying Retry-After seconds; 5xx = retryable; other errors fail.
+- **Providers:**
+
+  | Provider | Status | Evidence |
+  |---|---|---|
+  | OpenLigaDB (keyless, new) | **VERIFIED LIVE** 2026-10-20 18:12 UTC | 138 fixtures (PL 34, LaLiga 37, UCL 38, Bundesliga 29). After adding German-name aliases, 100% of PL/LaLiga/Bundesliga and 30/38 UCL fixtures map to known teams. UCL results ~30 min after full time; PL/LaLiga results lag days (community). Treated as `schedule_only`, never live. |
+  | openfootball (keyless backup) | **VERIFIED LIVE** 2026-10-20 18:12 UTC | 182 fixtures; schedules only (last data update 2026-09-22). |
+  | football-data.org | **IMPLEMENTED, NEEDS KEY** (`FOOTBALL_DATA_TOKEN`) | Unit-tested against the documented v4 shape (list + `getMatch`, status mapping, competition codes). Not called live. |
+  | CricAPI / CricketData.org | **IMPLEMENTED, NEEDS KEY** (`CRICAPI_KEY`) | Unit-tested (`currentMatches` + `matches`, `match_info`, women's mapping, IPL/WPL/intl competition detection). Not called live. |
+
+- **Quota ledger:** table `provider_usage` (migration `0004`); `reserveCalls()` enforces day and minute budgets shared by all users before every fetch. Budgets: OpenLigaDB 120/day, openfootball 40/day, football-data 150/day + 6/min, CricAPI 90/day.
+- **Scheduling per provider:**
+  - Normal interval: OpenLigaDB 2 h, openfootball 6 h, football-data 30 min, CricAPI 3 h.
+  - In-play interval (a stored match of that provider is within kick-off − 15 min … + expected duration): 15 / – / 10 / 10 min.
+  - The interval doubles once 80% of the day's budget is used.
+- **Canonical matches:**
+  - The same fixture from two providers (same sport, category and team pair either way round, start within 6 h) is one row with `provider_ids` holding both.
+  - Status follows authority (live-status provider > schedule-only > creator), so community data can never override football-data.org's live status.
+- **Failure handling:** a failed refresh keeps last-known-good rows and `last_success_at`; an empty response counts as a success with 0 items.
+- **Tests:** 168 unit tests passing (new `tests/sports-providers.test.ts`).

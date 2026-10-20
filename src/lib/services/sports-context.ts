@@ -11,6 +11,7 @@ import { tokens } from "./trend-context";
 
 const PROVIDER_LABEL: Record<string, string> = {
   openfootball: "openfootball fixture list (schedule only, no live status)",
+  openligadb: "OpenLigaDB community data (no live status; results can lag)",
   football_data: "football-data.org",
   cricapi: "CricketData.org (CricAPI)",
   creator: "the creator (not independently verified)",

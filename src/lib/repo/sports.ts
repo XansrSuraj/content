@@ -50,45 +50,102 @@ export interface MatchUpsert {
   verified?: boolean;
 }
 
-/** Shared provider fixtures: one row per provider match, updated in place. */
+const AUTHORITY: Record<string, number> = { creator: 0, schedule_only: 1, provider: 2 };
+const SAME_MATCH_WINDOW_MS = 6 * 3_600_000;
+
+/**
+ * Shared provider fixtures, merged into one canonical row per real match: the same
+ * fixture from two providers (same sport, category, both teams, start within 6 h)
+ * is one row with both provider ids. A lower-authority source (schedule-only
+ * community data) never overrides the status of a live-status provider.
+ */
 export async function upsertMatches(db: DB, rows: MatchUpsert[]): Promise<number> {
   let n = 0;
   for (const { verified, ...r } of rows) {
     const now = new Date();
-    const canonical = {
-      category: r.gender,
-      providerIds: { [r.provider]: r.externalId },
-      fetchedAt: now,
-      verifiedAt: verified ? r.statusCheckedAt : null,
-      freshnessPolicy: r.status === "finished" ? "final" : r.status === "live" ? "status" : "fixtures",
-    };
-    await db
-      .insert(sportsMatches)
-      .values({ ...r, ...canonical, ownerId: null })
-      .onConflictDoUpdate({
-        target: [sportsMatches.provider, sportsMatches.externalId],
-        set: {
-          competition: r.competition,
-          homeTeamId: r.homeTeamId,
-          awayTeamId: r.awayTeamId,
-          homeName: r.homeName,
-          awayName: r.awayName,
-          startsAt: r.startsAt,
-          status: r.status,
-          statusSource: r.statusSource,
-          statusCheckedAt: r.statusCheckedAt,
-          resultSummary: r.resultSummary,
-          url: r.url,
-          competitionId: r.competitionId ?? null,
-          season: r.season ?? null,
-          venue: r.venue ?? null,
-          ...canonical,
-          updatedAt: now,
-        },
+    const freshnessPolicy = r.status === "finished" ? "final" : r.status === "live" ? "status" : "fixtures";
+    const existing = await findCanonical(db, r);
+    if (existing) {
+      const providerIds = { ...existing.providerIds, [r.provider]: r.externalId };
+      // Status follows whoever has the most authority, whichever provider created the row.
+      const wins = AUTHORITY[r.statusSource] >= AUTHORITY[existing.statusSource];
+      await db
+        .update(sportsMatches)
+        .set(
+          wins
+            ? {
+                status: r.status,
+                statusSource: r.statusSource,
+                statusCheckedAt: r.statusCheckedAt,
+                resultSummary: r.resultSummary ?? existing.resultSummary,
+                startsAt: r.startsAt,
+                verifiedAt: verified ? r.statusCheckedAt : existing.verifiedAt,
+                freshnessPolicy,
+                providerIds,
+                competitionId: existing.competitionId ?? r.competitionId ?? null,
+                season: existing.season ?? r.season ?? null,
+                venue: existing.venue ?? r.venue ?? null,
+                fetchedAt: now,
+                updatedAt: now,
+              }
+            : {
+                providerIds,
+                competitionId: existing.competitionId ?? r.competitionId ?? null,
+                season: existing.season ?? r.season ?? null,
+                venue: existing.venue ?? r.venue ?? null,
+                fetchedAt: now,
+                updatedAt: now,
+              },
+        )
+        .where(eq(sportsMatches.id, existing.id));
+    } else {
+      await db.insert(sportsMatches).values({
+        ...r,
+        competitionId: r.competitionId ?? null,
+        season: r.season ?? null,
+        venue: r.venue ?? null,
+        category: r.gender,
+        providerIds: { [r.provider]: r.externalId },
+        fetchedAt: now,
+        verifiedAt: verified ? r.statusCheckedAt : null,
+        freshnessPolicy,
+        ownerId: null,
       });
+    }
     n++;
   }
   return n;
+}
+
+async function findCanonical(db: DB, r: Omit<MatchUpsert, "verified">): Promise<MatchRow | null> {
+  // Same provider id first.
+  const [own] = await db.select().from(sportsMatches).where(and(eq(sportsMatches.provider, r.provider), eq(sportsMatches.externalId, r.externalId)));
+  if (own) return own;
+  const [byId] = await db
+    .select()
+    .from(sportsMatches)
+    .where(and(isNull(sportsMatches.ownerId), sql`${sportsMatches.providerIds} ->> ${r.provider} = ${r.externalId}`));
+  if (byId) return byId;
+  if (!r.homeTeamId || !r.awayTeamId) return null;
+  const from = new Date(r.startsAt.getTime() - SAME_MATCH_WINDOW_MS);
+  const to = new Date(r.startsAt.getTime() + SAME_MATCH_WINDOW_MS);
+  const [same] = await db
+    .select()
+    .from(sportsMatches)
+    .where(
+      and(
+        isNull(sportsMatches.ownerId),
+        eq(sportsMatches.sport, r.sport),
+        eq(sportsMatches.gender, r.gender),
+        gte(sportsMatches.startsAt, from),
+        lte(sportsMatches.startsAt, to),
+        or(
+          and(eq(sportsMatches.homeTeamId, r.homeTeamId), eq(sportsMatches.awayTeamId, r.awayTeamId)),
+          and(eq(sportsMatches.homeTeamId, r.awayTeamId), eq(sportsMatches.awayTeamId, r.homeTeamId)),
+        ),
+      ),
+    );
+  return same ?? null;
 }
 
 /** Fixtures a creator can see: shared provider fixtures plus their own entries. */

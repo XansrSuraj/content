@@ -174,6 +174,18 @@ export const SOURCES: SourceInfo[] = [
     ingestible: true,
   },
   {
+    key: "openligadb",
+    name: "Football fixtures & results (OpenLigaDB)",
+    platform: "football",
+    kind: "fixtures",
+    coverage:
+      "Premier League, LaLiga, Champions League and Bundesliga fixtures and results for the current season, from the free community project OpenLigaDB. Results are entered by volunteers and can lag (seen 2026-10-20: Champions League within ~30 min, Premier League/LaLiga days late). Never used as live status.",
+    requirements: ["On by default (no key, no account). SOURCE_OPENLIGADB_ENABLED=false turns it off."],
+    policyNotes: ["Data licensed ODbL — attribution to OpenLigaDB is shown with the data.", "Polite use: each league every 2 hours, every 15 minutes during a match window, self-capped at 120 calls/day."],
+    docsUrl: "https://www.openligadb.de/",
+    ingestible: false,
+  },
+  {
     key: "openfootball_fixtures",
     name: "Football fixtures (openfootball)",
     platform: "football",
@@ -245,6 +257,8 @@ export function sourceStatus(key: string, cfg: AppConfig): { status: SourceStatu
       return cfg.sources.googleTrendsRssEnabled
         ? { status: "enabled", missing: [] }
         : { status: "disabled", missing: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true"] };
+    case "openligadb":
+      return cfg.sources.openligadbEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_OPENLIGADB_ENABLED=true"] };
     case "openfootball_fixtures":
       return cfg.sources.openfootballEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_OPENFOOTBALL_ENABLED=true"] };
     case "football_data":

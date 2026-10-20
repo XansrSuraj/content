@@ -70,6 +70,7 @@ export interface AppConfig {
     blueskyEnabled: boolean;
     mastodonEnabled: boolean;
     openfootballEnabled: boolean;
+    openligadbEnabled: boolean;
     footballDataTokenPresent: boolean;
     cricApiKeyPresent: boolean;
     /** User-Agent for keyless public feeds. */
@@ -167,6 +168,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       blueskyEnabled: bool(env.SOURCE_BLUESKY_ENABLED, keylessDefault),
       mastodonEnabled: bool(env.SOURCE_MASTODON_ENABLED, keylessDefault),
       openfootballEnabled: bool(env.SOURCE_OPENFOOTBALL_ENABLED, keylessDefault),
+      openligadbEnabled: bool(env.SOURCE_OPENLIGADB_ENABLED, keylessDefault),
       footballDataTokenPresent: Boolean(env.FOOTBALL_DATA_TOKEN?.trim()),
       cricApiKeyPresent: Boolean(env.CRICAPI_KEY?.trim()),
       userAgent: env.TRENDSAATHI_USER_AGENT?.trim() || `TrendSaathi/0.1 (+${env.APP_URL || "http://localhost:3000"})`,

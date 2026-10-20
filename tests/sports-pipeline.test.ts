@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CricApiConnector, FootballDataConnector, OpenFootballConnector, cricApiStatus, footballDataStatus, footballSeason, zonedToUtc } from "@/lib/providers/sports/connectors";
+import { CricApiProvider, FootballDataProvider, OpenFootballProvider, cricApiStatus, footballDataStatus, footballSeason, zonedToUtc } from "@/lib/providers/sports/connectors";
 import { parseTrendsCsv } from "@/lib/domain/trends-csv";
 import { classifyHashtags, compactTerm, type HashtagEvidence } from "@/lib/domain/hashtags";
 import { runSportsIngestion } from "@/lib/jobs/sports-ingest";
@@ -11,6 +11,7 @@ import { sampleResult } from "./fixtures";
 
 afterEach(() => vi.unstubAllGlobals());
 const now = new Date("2026-10-20T06:30:00Z");
+const RANGE = { from: new Date(now.getTime() - 10 * 86_400_000), to: new Date(now.getTime() + 14 * 86_400_000) };
 
 function stubJson(byUrl: (url: string) => unknown) {
   const fn = vi.fn<(url: string | URL | Request) => Promise<Response>>(async (url) => {
@@ -47,7 +48,7 @@ describe("openfootball", () => {
           }
         : undefined,
     );
-    const rows = await new OpenFootballConnector("UA").fetch(AbortSignal.timeout(1000), now);
+    const rows = await new OpenFootballProvider("UA").listFixtures(RANGE, AbortSignal.timeout(1000), now);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ homeTeamId: "football:arsenal", awayTeamId: "football:chelsea", status: "finished", statusSource: "schedule_only", resultSummary: "Arsenal FC 2–1 Chelsea FC (full time)" });
     expect(rows[1]).toMatchObject({ homeTeamId: "football:liverpool", awayTeamId: "football:mancity", status: "scheduled" });
@@ -63,7 +64,7 @@ describe("keyed providers", () => {
         { id: 7, utcDate: "2026-10-19T19:00:00Z", status: "FINISHED", competition: { name: "Primera Division" }, homeTeam: { name: "Real Madrid CF" }, awayTeam: { name: "FC Barcelona" }, score: { fullTime: { home: 1, away: 2 } } },
       ],
     }));
-    const [m] = await new FootballDataConnector("tok").fetch(AbortSignal.timeout(1000), now);
+    const [m] = await new FootballDataProvider("tok").listFixtures(RANGE, AbortSignal.timeout(1000), now);
     expect(m).toMatchObject({ homeTeamId: "football:realmadrid", awayTeamId: "football:barcelona", status: "finished", statusSource: "provider", resultSummary: "Real Madrid CF 1–2 FC Barcelona (full time)" });
   });
 
@@ -81,17 +82,17 @@ describe("keyed providers", () => {
           }
         : { status: "success", data: [] },
     );
-    const rows = await new CricApiConnector("k").fetch(AbortSignal.timeout(1000), now);
+    const rows = await new CricApiProvider("k").listFixtures(RANGE, AbortSignal.timeout(1000), now);
     expect(rows.find((r) => r.externalId === "a")).toMatchObject({ homeTeamId: "cricket:ind", awayTeamId: "cricket:aus", status: "finished", resultSummary: "India won by 5 wkts", gender: "men" });
-    expect(rows.find((r) => r.externalId === "b")).toMatchObject({ gender: "women", homeTeamId: "cricket:ind", awayTeamId: "cricket:eng", status: "scheduled" });
+    expect(rows.find((r) => r.externalId === "b")).toMatchObject({ gender: "women", homeTeamId: "cricket:ind_w", awayTeamId: "cricket:eng_w", status: "scheduled", competitionId: "cricket:intl_w" });
   });
 
   it("respects the daily call cap", async () => {
     const db = await createTestDb();
     stubJson(() => ({ status: "success", data: [] }));
-    const c = new CricApiConnector("k");
-    c.minIntervalMinutes = 0;
-    c.dailyCallCap = 4; // 2 calls per run → 2 runs allowed
+    const c = new CricApiProvider("k");
+    c.intervals = { fixturesMin: 0, liveMin: 0 };
+    c.budget = { perDay: 4, perMinute: 10 }; // 2 calls per run → 2 runs allowed
     const results = [];
     for (let i = 0; i < 3; i++) results.push((await runSportsIngestion(db, c, { now: new Date(now.getTime() + i * 1000) })).status);
     expect(results).toEqual(["success", "success", "skipped"]);

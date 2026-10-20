@@ -520,3 +520,16 @@ export const entityAliases = pgTable(
   },
   (t) => [uniqueIndex("alias_entity_unique").on(t.alias, t.entityType, t.entityId), index("alias_lookup").on(t.alias)],
 );
+
+// ---------- Provider quota ledger (shared budgets for free tiers) ----------
+
+export const providerUsage = pgTable(
+  "provider_usage",
+  {
+    provider: text("provider").notNull(),
+    /** "d:YYYY-MM-DD" (UTC day) or "m:YYYY-MM-DDTHH:MM" (UTC minute). */
+    window: text("window").notNull(),
+    calls: integer("calls").notNull().default(0),
+  },
+  (t) => [uniqueIndex("provider_usage_window").on(t.provider, t.window)],
+);

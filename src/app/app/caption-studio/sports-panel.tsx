@@ -6,7 +6,7 @@ import type { MatchSnapshot, SportsContextUsed } from "@/lib/db/schema";
 import { useI18n } from "@/components/i18n-provider";
 import { Badge, Button, Input, Notice, Select, formatDateTime } from "@/components/ui";
 
-const PROVIDER_NAME: Record<string, string> = { openfootball: "openfootball", football_data: "football-data.org", cricapi: "CricketData.org" };
+const PROVIDER_NAME: Record<string, string> = { openfootball: "openfootball", openligadb: "OpenLigaDB", football_data: "football-data.org", cricapi: "CricketData.org" };
 
 const STAGE_TONE = { upcoming: "info", live: "ok", completed: "neutral", postponed: "warn", cancelled: "warn", unknown: "warn" } as const;
 
