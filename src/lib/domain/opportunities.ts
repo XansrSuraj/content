@@ -95,10 +95,17 @@ export interface PersonalSignals {
   useFeedback: boolean;
 }
 
+/** Why an item is shown — structured so each UI language can phrase it. */
+export type RankReason =
+  | { kind: "category"; values: string[] }
+  | { kind: "language"; values: string[] }
+  | { kind: "platform" }
+  | { kind: "saved" };
+
 export interface Ranked<T> {
   item: T;
   score: number;
-  reasons: string[];
+  reasons: RankReason[];
 }
 
 /** Transparent profile-based ranking. Every point of score has a stated reason. */
@@ -107,28 +114,28 @@ export function rankForCreator<T extends RankableOpportunity>(items: T[], s: Per
   for (const item of items) {
     if (s.useFeedback && s.rejectedIds.has(item.id)) continue;
     let score = 0;
-    const reasons: string[] = [];
+    const reasons: RankReason[] = [];
     const cat = item.categories.filter((c) => s.categories.includes(c));
     if (cat.length) {
       score += 3;
-      reasons.push(`Matches your category: ${cat.join(", ")}`);
+      reasons.push({ kind: "category", values: cat });
     }
     const lang = item.languages.filter((l) => s.languages.includes(l));
     if (lang.length) {
       score += 2;
-      reasons.push(`Works in ${lang.join(", ")}`);
+      reasons.push({ kind: "language", values: lang });
     }
     const plat = item.platforms.filter((p) => s.platforms.includes(p));
     if (plat.length) {
       score += 1;
-      reasons.push("Suits a platform you post on");
+      reasons.push({ kind: "platform" });
     }
     if (item.regions.includes(s.region) || item.regions.includes("IN")) score += 0.5;
     if (s.useFeedback) {
       const savedCat = item.categories.filter((c) => s.savedCategories.includes(c));
       if (savedCat.length) {
         score += 1;
-        reasons.push("Similar to ideas you saved");
+        reasons.push({ kind: "saved" });
       }
     }
     out.push({ item, score, reasons });

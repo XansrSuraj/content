@@ -51,3 +51,4 @@ next-env.d.ts
 /eval-output/
 /.data-pg.log
 /.data-prod2.log
+/.e2e-pglite/

@@ -2,9 +2,11 @@
 
 import { useActionState, type ReactNode } from "react";
 import { completeOnboarding, type ProfileState } from "@/app/actions/profile";
+import { useI18n } from "@/components/i18n-provider";
 import { Button, Notice } from "@/components/ui";
 
 export function OnboardingSubmit({ children }: { children: ReactNode }) {
+  const { d } = useI18n();
   const [state, action, pending] = useActionState<ProfileState, FormData>(completeOnboarding, {});
   return (
     <form action={action}>
@@ -16,10 +18,10 @@ export function OnboardingSubmit({ children }: { children: ReactNode }) {
       )}
       <div className="mt-6 flex flex-wrap gap-2">
         <Button type="submit" name="next" value="app" disabled={pending}>
-          Save & see ideas
+          {d.onboarding.saveIdeas}
         </Button>
         <Button type="submit" name="next" value="studio" variant="secondary" disabled={pending}>
-          Save & open Caption Studio
+          {d.onboarding.saveStudio}
         </Button>
       </div>
     </form>

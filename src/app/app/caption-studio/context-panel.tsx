@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CaptionContext } from "@/lib/domain/captions";
 import { GOALS, LANGUAGES, LENGTHS, REGIONS, TONES } from "@/lib/domain/options";
 import { PLATFORMS, getPlatform } from "@/lib/domain/platforms";
+import { useI18n } from "@/components/i18n-provider";
 import { Badge, Field, Input, Select } from "@/components/ui";
 
 export function ContextPanel({
@@ -15,6 +16,9 @@ export function ContextPanel({
   onChange: (c: CaptionContext) => void;
   hasConversation: boolean;
 }) {
+  const { d } = useI18n();
+  const t = d.context;
+  const o = d.options;
   const [termDraft, setTermDraft] = useState("");
   const set = <K extends keyof CaptionContext>(k: K, v: CaptionContext[K]) => onChange({ ...context, [k]: v });
   const rule = getPlatform(context.platform).hashtagRule;
@@ -22,10 +26,10 @@ export function ContextPanel({
   return (
     <div className="flex flex-col gap-4 p-4">
       <p className="text-xs text-muted">
-        Sensible defaults are set. {hasConversation ? "Changes apply to your next message." : "Change anything before sending, or just send."}
+        {hasConversation ? t.defaultsFollow : t.defaults}
       </p>
 
-      <Field label="Platform" htmlFor="ctx-platform">
+      <Field label={t.platform} htmlFor="ctx-platform">
         <Select id="ctx-platform" value={context.platform} onChange={(e) => set("platform", e.target.value as CaptionContext["platform"])}>
           {PLATFORMS.map((p) => (
             <option key={p.id} value={p.id}>
@@ -35,70 +39,72 @@ export function ContextPanel({
         </Select>
       </Field>
       <p className="-mt-2 text-xs text-muted">
-        Hashtags: {rule.hardLimitNote}{" "}
-        {rule.status === "unverified" && <Badge tone="warn">rule not officially confirmed</Badge>}
+        {t.hashtagsNote} {rule.hardLimitNote}{" "}
+        {rule.status === "unverified" && <Badge tone="warn">{t.ruleUnverified}</Badge>}
       </p>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Language" htmlFor="ctx-lang">
+        <Field label={t.language} htmlFor="ctx-lang">
           <Select id="ctx-lang" value={context.language} onChange={(e) => set("language", e.target.value as CaptionContext["language"])}>
             {LANGUAGES.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.label}
+                {o.contentLanguages[l.id] ?? l.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Tone" htmlFor="ctx-tone">
+        <Field label={t.tone} htmlFor="ctx-tone">
           <Select id="ctx-tone" value={context.tone} onChange={(e) => set("tone", e.target.value as CaptionContext["tone"])}>
-            {TONES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
+            {TONES.map((x) => (
+              <option key={x.id} value={x.id}>
+                {o.tones[x.id] ?? x.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Goal" htmlFor="ctx-goal">
+        <Field label={t.goal} htmlFor="ctx-goal">
           <Select id="ctx-goal" value={context.goal} onChange={(e) => set("goal", e.target.value as CaptionContext["goal"])}>
             {GOALS.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.label}
+                {o.goals[g.id] ?? g.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Length" htmlFor="ctx-length">
+        <Field label={t.length} htmlFor="ctx-length">
           <Select id="ctx-length" value={context.length} onChange={(e) => set("length", e.target.value as CaptionContext["length"])}>
             {LENGTHS.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.label}
+                {o.lengths[l.id] ?? l.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Region" htmlFor="ctx-region">
+        <Field label={t.region} htmlFor="ctx-region">
           <Select id="ctx-region" value={context.region} onChange={(e) => set("region", e.target.value)}>
             {REGIONS.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.label}
+                {o.regions[r.id] ?? r.label}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Emoji" htmlFor="ctx-emoji">
+        <Field label={t.emoji} htmlFor="ctx-emoji">
           <Select id="ctx-emoji" value={context.emoji} onChange={(e) => set("emoji", e.target.value as CaptionContext["emoji"])}>
-            <option value="auto">Auto</option>
-            <option value="light">Light</option>
-            <option value="none">None</option>
+            {(["auto", "light", "none"] as const).map((k) => (
+              <option key={k} value={k}>
+                {o.emoji[k]}
+              </option>
+            ))}
           </Select>
         </Field>
       </div>
 
-      <Field label="Audience" htmlFor="ctx-audience" hint="e.g. college students in Delhi, first-time phone buyers">
+      <Field label={t.audience} htmlFor="ctx-audience" hint={t.audienceHint}>
         <Input id="ctx-audience" value={context.audience} maxLength={200} onChange={(e) => set("audience", e.target.value)} />
       </Field>
 
-      <Field label="Words / facts / brand names to keep exactly" htmlFor="ctx-term">
+      <Field label={t.keepExact} htmlFor="ctx-term">
         <div className="flex gap-2">
           <Input
             id="ctx-term"
@@ -113,7 +119,7 @@ export function ContextPanel({
                 setTermDraft("");
               }
             }}
-            placeholder="Type and press Enter"
+            placeholder={t.keepPlaceholder}
           />
         </div>
       </Field>
@@ -125,7 +131,7 @@ export function ContextPanel({
               type="button"
               onClick={() => set("preserveTerms", context.preserveTerms.filter((x) => x !== term))}
               className="rounded-full bg-brand-soft px-2 py-0.5 text-xs text-brand-ink"
-              aria-label={`Remove ${term}`}
+              aria-label={t.removeTerm(term)}
             >
               {term} ×
             </button>
@@ -141,27 +147,25 @@ export function ContextPanel({
           onChange={(e) => set("useTrends", e.target.checked)}
         />
         <span>
-          Use current trends as context
-          <span className="block text-xs text-muted">
-            Matches your topic with fresh Google Trends / Wikipedia data (search interest, not social virality) and shows what was used.
-          </span>
+          {t.useTrends}
+          <span className="block text-xs text-muted">{t.useTrendsHint}</span>
         </span>
       </label>
 
-      <Field label="Output" htmlFor="ctx-output">
+      <Field label={t.output} htmlFor="ctx-output">
         <Select id="ctx-output" value={context.outputMode} onChange={(e) => set("outputMode", e.target.value as CaptionContext["outputMode"])}>
-          <option value="full">Full (options, hooks, explanation)</option>
-          <option value="final_only">Only final caption + hashtags</option>
+          <option value="full">{t.outputFull}</option>
+          <option value="final_only">{t.outputFinal}</option>
         </Select>
       </Field>
 
       {(context.keepFirstLine || context.notes.length > 0) && (
         <div>
-          <p className="text-sm font-semibold">Active constraints</p>
+          <p className="text-sm font-semibold">{t.activeConstraints}</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {context.keepFirstLine && (
               <button type="button" onClick={() => set("keepFirstLine", null)} className="rounded-full bg-surface-2 px-2 py-0.5 text-xs" title={context.keepFirstLine}>
-                First line locked ×
+                {t.firstLineLocked} ×
               </button>
             )}
             {context.notes.map((n) => (

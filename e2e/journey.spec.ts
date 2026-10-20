@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { englishContext, expect, test } from "./fixtures";
 
 const SHOTS = process.env.E2E_SHOTS ?? "e2e-shots";
 const unique = () => `${Date.now()}${Math.floor(Math.random() * 1e6)}`;
@@ -26,7 +27,7 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   await page.getByText("Tech & gadgets").click();
   await page.getByRole("button", { name: "Save & see ideas" }).click();
   await page.waitForURL(/\/app$/);
-  await expect(page.getByText("Demo mode", { exact: true })).toBeVisible();
+  await expect(page.getByText("Demo mode", { exact: true }).first()).toBeVisible();
 
   // Opportunities with evidence
   await page.goto("/app/opportunities");
@@ -36,8 +37,8 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   await expect(page.getByRole("heading", { name: "Evidence" })).toBeVisible();
   await expect(page.getByText("Demo sample — not real data")).toBeVisible();
   await expect(page.getByText(/Comparable observations only/)).toBeVisible();
-  await page.getByRole("button", { name: "☆ Save" }).click();
-  await expect(page.getByRole("button", { name: "★ Saved" })).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved", exact: true })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/desktop-opportunity-detail.png`, fullPage: true });
 
   // Brief
@@ -57,12 +58,12 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   await page.waitForURL(/c=/);
 
   // Follow-up keeps the conversation
-  await page.getByRole("button", { name: "Emoji hata do." }).click();
+  await page.getByRole("button", { name: "Remove emoji." }).click();
   // Chat-style history: the earlier reply collapses, the newest reply is shown in full.
   await expect(page.getByRole("button", { name: "Show all 3 options & details" })).toHaveCount(1, { timeout: 60_000 });
   await expect(page.getByText("Option A", { exact: true })).toHaveCount(1);
   // The creator's follow-up bubble is part of the thread.
-  await expect(page.getByText("Emoji hata do.", { exact: true }).last()).toBeVisible();
+  await expect(page.locator("div.justify-end > div").getByText("Remove emoji.", { exact: true })).toBeVisible();
 
   // Copy hashtags: success is only shown when the clipboard write succeeds
   await page.getByRole("button", { name: "Copy hashtags" }).first().click();
@@ -120,7 +121,8 @@ test("real creator opens Caption Studio directly and sees honest unconfigured st
 
   // No demo data in a real account
   await page.goto("/app/opportunities?dataset=observed");
-  await expect(page.getByText("Trend provider unavailable").first()).toBeVisible();
+  // Either no source is configured, or one is but has no observed ideas for a new niche yet.
+  await expect(page.getByText(/Trend provider unavailable|No ideas found/).first()).toBeVisible();
   await expect(page.getByText("Budget phone se cinematic shots")).toHaveCount(0);
 
   // Not an admin
@@ -129,7 +131,7 @@ test("real creator opens Caption Studio directly and sees honest unconfigured st
 });
 
 test("private records are isolated between accounts", async ({ browser }) => {
-  const a = await browser.newContext();
+  const a = await englishContext(browser);
   const pa = await a.newPage();
   await signUp(pa, `alice${unique()}@example.com`);
   await pa.getByRole("button", { name: /Skip for now/ }).click();
@@ -137,7 +139,7 @@ test("private records are isolated between accounts", async ({ browser }) => {
   await pa.waitForURL(/c=/);
   const convId = new URL(pa.url()).searchParams.get("c")!;
 
-  const b = await browser.newContext();
+  const b = await englishContext(browser);
   const pb = await b.newPage();
   await signUp(pb, `bob${unique()}@example.com`);
   await pb.getByRole("button", { name: /Skip for now/ }).click();
@@ -185,7 +187,7 @@ test("admin email gets admin access", async ({ page }) => {
 });
 
 test("core layouts work on mobile", async ({ browser }) => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const ctx = await englishContext(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   await page.goto("/");
   await page.screenshot({ path: `${SHOTS}/mobile-landing.png`, fullPage: true });
@@ -208,7 +210,7 @@ test("core layouts work on mobile", async ({ browser }) => {
   await ctx.close();
 });
 
-test("trending page explains how to enable the free source when it is off", async ({ page }) => {
+test("trending page is honest about its source", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Try the demo" }).first().click();
   await page.waitForURL(/onboarding/);
@@ -217,7 +219,8 @@ test("trending page explains how to enable the free source when it is off", asyn
   await page.goto("/app/trending");
   await expect(page.getByRole("heading", { name: "Trending now" })).toBeVisible();
   await expect(page.getByText("not Instagram, YouTube or TikTok")).toBeVisible();
-  await expect(page.getByText("No trend source is turned on")).toBeVisible();
+  // Depends on the server env: either the honest "off" state, or real items with the fact-check warning.
+  await expect(page.getByText(/No trend source is turned on|Check facts before posting/).first()).toBeVisible();
 });
 
 test("chat composer behaves like a chat app", async ({ page }) => {
@@ -253,4 +256,38 @@ test("chat composer behaves like a chat app", async ({ page }) => {
   await page.goto("/app/briefs");
   await page.goto(url);
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("adha likha draft");
+});
+
+test("language switch changes the whole app: English, Hinglish, Hindi", async ({ browser }) => {
+  // Fresh browser with no language cookie: the default is Hinglish.
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi-Latn");
+  await page.locator("header select").first().selectOption("english");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("button", { name: "Try the demo" }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Try the demo" }).first().click();
+  await page.waitForURL(/onboarding/);
+  await page.getByRole("button", { name: /Skip for now/ }).click();
+  await page.waitForURL(/caption-studio/);
+  await expect(page.getByRole("heading", { name: "Caption Studio" })).toBeVisible();
+
+  // Header switcher: Hindi everywhere, remembered across navigation.
+  await page.locator("header select").selectOption("hindi");
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi");
+  await expect(page.getByRole("button", { name: "भेजें" })).toBeVisible();
+  await page.goto("/app/settings");
+  await expect(page.getByRole("radio", { name: "हिन्दी" })).toHaveAttribute("aria-checked", "true");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${SHOTS}/desktop-settings-hindi.png`, fullPage: true });
+
+  // Hinglish from the settings page.
+  await page.getByRole("radio", { name: "Hinglish" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi-Latn");
+  await page.goto("/app");
+  await page.screenshot({ path: `${SHOTS}/desktop-home-hinglish.png`, fullPage: true });
+  await ctx.close();
 });

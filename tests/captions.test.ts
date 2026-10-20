@@ -9,6 +9,7 @@ import {
   stripTrailingHashtags,
 } from "@/lib/domain/captions";
 import { BriefContentSchema } from "@/lib/domain/briefs";
+import { getDict } from "@/lib/i18n";
 import { TemplateCaptionProvider, stripInstructions } from "@/lib/providers/ai/template";
 import { sampleResult } from "./fixtures";
 
@@ -126,5 +127,31 @@ describe("regressions found by the caption eval", () => {
   it("removes a trailing hashtag run from caption text (hashtags live in their own field)", () => {
     expect(stripTrailingHashtags("Last over dekha! #Cricket #LiveReaction\n#Cricket")).toBe("Last over dekha!");
     expect(stripTrailingHashtags("Mid-sentence #tag stays here.")).toBe("Mid-sentence #tag stays here.");
+  });
+});
+
+describe("quick-reply chips in every app language", () => {
+  const original = "Aaj maine apne budget phone se cinematic video shoot kiya.\nDusri line.";
+  // Chips are [shorter, funny, less promo, keep first line, Shorts, no emoji, final only] in each dictionary.
+  it.each(["english", "hinglish", "hindi"] as const)("%s chips each apply their constraint", (lang) => {
+    const chips = getDict(lang).studio.quickFollowups;
+    const apply = (i: number) => applyFollowUpToContext(chips[i], DEFAULT_CONTEXT, original).context;
+    expect(apply(0).length).toBe("short");
+    expect(apply(1).tone).toBe("funny");
+    expect(apply(2).notes).toContain("Keep it less promotional");
+    expect(apply(3).keepFirstLine).toBe("Aaj maine apne budget phone se cinematic video shoot kiya.");
+    expect(apply(4).platform).toBe("youtube_shorts");
+    expect(apply(5).emoji).toBe("none");
+    expect(apply(6).outputMode).toBe("final_only");
+  });
+
+  it("every applied label has a translation", () => {
+    let applied: string[] = [];
+    for (const lang of ["english", "hinglish", "hindi"] as const) {
+      for (const chip of getDict(lang).studio.quickFollowups) applied = [...applied, ...applyFollowUpToContext(chip, DEFAULT_CONTEXT, original).applied];
+    }
+    for (const lang of ["english", "hinglish", "hindi"] as const) {
+      for (const a of applied) expect(getDict(lang).studio.appliedLabels[a], `${lang}: ${a}`).toBeTruthy();
+    }
   });
 });

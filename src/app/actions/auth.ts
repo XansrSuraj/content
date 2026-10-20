@@ -12,6 +12,7 @@ import { createSession, destroySession } from "@/lib/auth/session";
 import { consumeLimit } from "@/lib/security/rate-limit";
 import { createDemoUser } from "@/lib/demo/seed";
 import { getProfile } from "@/lib/repo/creator";
+import { getServerDict } from "@/lib/i18n/server";
 
 export interface AuthState {
   error?: string;
@@ -35,12 +36,13 @@ async function authLimited(): Promise<boolean> {
 }
 
 export async function signUp(_prev: AuthState, form: FormData): Promise<AuthState> {
-  if (await authLimited()) return { error: "Too many attempts. Please wait a few minutes." };
+  const { d } = await getServerDict();
+  if (await authLimited()) return { error: d.auth.rateLimited };
   const parsed = Credentials.safeParse({ email: form.get("email"), password: form.get("password") });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid details." };
+  if (!parsed.success) return { error: d.auth.errors.invalid };
   const db = await getDb();
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email)).limit(1);
-  if (existing.length) return { error: "An account with this email already exists. Please sign in." };
+  if (existing.length) return { error: d.auth.errors.exists };
   const role = config().adminEmails.includes(parsed.data.email) ? "admin" : "creator";
   const [user] = await db
     .insert(users)
@@ -51,13 +53,14 @@ export async function signUp(_prev: AuthState, form: FormData): Promise<AuthStat
 }
 
 export async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
-  if (await authLimited()) return { error: "Too many attempts. Please wait a few minutes." };
+  const { d } = await getServerDict();
+  if (await authLimited()) return { error: d.auth.rateLimited };
   const parsed = Credentials.safeParse({ email: form.get("email"), password: form.get("password") });
-  if (!parsed.success) return { error: "Email or password is incorrect." };
+  if (!parsed.success) return { error: d.auth.errors.wrong };
   const db = await getDb();
   const [user] = await db.select().from(users).where(eq(users.email, parsed.data.email)).limit(1);
   const ok = await verifyPassword(parsed.data.password, user?.passwordHash ?? null);
-  if (!user || !ok || user.isDemo) return { error: "Email or password is incorrect." };
+  if (!user || !ok || user.isDemo) return { error: d.auth.errors.wrong };
   // Keep admin role in sync with ADMIN_EMAILS (grant and revoke).
   const shouldBeAdmin = config().adminEmails.includes(user.email);
   if ((user.role === "admin") !== shouldBeAdmin) {

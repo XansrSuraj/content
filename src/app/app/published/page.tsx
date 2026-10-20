@@ -1,16 +1,21 @@
+import { ExternalLink, Trash2 } from "lucide-react";
 import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { getPlatform } from "@/lib/domain/platforms";
 import { listVariants } from "@/lib/repo/studio";
 import { listBriefs, listPublished, type PublishedPost } from "@/lib/repo/work";
+import { getServerDict } from "@/lib/i18n/server";
 import { deletePublishedAction, updatePublishedAction } from "@/app/actions/work";
 import { Badge, Button, Card, EmptyState, Input, Notice, PageHeader, Select, formatDateTime, istNowForInput } from "@/components/ui";
 import { AddPublishedForm } from "./add-form";
 
-export const metadata = { title: "Published" };
+export async function generateMetadata() {
+  const { d } = await getServerDict();
+  return { title: d.published.title };
+}
 
 const MIN_ENTRIES_FOR_PATTERN = 6;
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const METRICS = ["views", "likes", "comments", "shares", "saves"] as const;
 
 /** Patterns from the creator's own manual log only — never a universal "best time". */
 function ownPattern(posts: PublishedPost[]) {
@@ -30,18 +35,21 @@ function ownPattern(posts: PublishedPost[]) {
 export default async function PublishedPage() {
   const user = await requireUser();
   const db = await getDb();
-  const [posts, variants, briefs] = await Promise.all([listPublished(db, user.id), listVariants(db, user.id), listBriefs(db, user.id)]);
+  const [posts, variants, briefs, { lang, d }] = await Promise.all([
+    listPublished(db, user.id),
+    listVariants(db, user.id),
+    listBriefs(db, user.id),
+    getServerDict(),
+  ]);
+  const t = d.published;
   const pattern = ownPattern(posts);
   const now = istNowForInput();
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Published posts"
-        subtitle="Record what you posted and how it felt it went. Numbers here are only what you type in — no platform analytics are connected."
-      />
-      <Card className="p-5">
-        <h2 className="mb-3 font-semibold">Add a published link</h2>
+    <div className="space-y-10">
+      <PageHeader title={t.title} subtitle={t.lead} />
+      <Card className="p-5 sm:p-6">
+        <h2 className="mb-4 font-semibold">{t.addTitle}</h2>
         <AddPublishedForm
           variants={variants.map((v) => ({ id: v.id, label: `${v.text.slice(0, 60)}${v.text.length > 60 ? "…" : ""}` }))}
           briefs={briefs.map((b) => ({ id: b.id, topic: b.topic }))}
@@ -50,25 +58,22 @@ export default async function PublishedPage() {
       </Card>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold">Your posting log</h2>
+        <h2 className="mb-3 text-lg font-semibold">{t.logTitle}</h2>
         {pattern ? (
-          <Card className="p-4">
-            <p className="text-xs text-muted">
-              From {pattern.rated} of your own entries where you rated the outcome. This is your personal record, not a
-              platform recommendation, and day-of-week is only one of many factors.
-            </p>
+          <Card className="p-5">
+            <p className="text-xs text-muted">{t.logNote(pattern.rated)}</p>
             <table className="mt-3 w-full max-w-md text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted">
-                  <th className="py-1">Day (IST)</th>
-                  <th>Posts rated</th>
-                  <th>Rated “better than usual”</th>
+                  <th className="py-1 font-medium">{t.day}</th>
+                  <th className="font-medium">{t.postsRated}</th>
+                  <th className="font-medium">{t.better}</th>
                 </tr>
               </thead>
               <tbody>
                 {pattern.rows.map(([day, r]) => (
                   <tr key={day} className="border-t border-line">
-                    <td className="py-1">{WEEKDAYS[day]}</td>
+                    <td className="py-1.5">{t.weekdays[day]}</td>
                     <td>{r.total}</td>
                     <td>{r.better}</td>
                   </tr>
@@ -77,59 +82,67 @@ export default async function PublishedPage() {
             </table>
           </Card>
         ) : (
-          <Notice tone="info">
-            Add and rate at least {MIN_ENTRIES_FOR_PATTERN} posts to see patterns from your own log. TrendSaathi doesn&apos;t
-            claim a universal best posting time.
-          </Notice>
+          <Notice tone="info">{t.logNeed(MIN_ENTRIES_FOR_PATTERN)}</Notice>
         )}
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold">All posts ({posts.length})</h2>
+        <h2 className="mb-3 text-lg font-semibold">{t.all(posts.length)}</h2>
         {posts.length === 0 ? (
-          <EmptyState title="No published posts yet">After you post, paste the link here to track what worked for you.</EmptyState>
+          <EmptyState title={t.emptyTitle}>{t.emptyText}</EmptyState>
         ) : (
           <ul className="space-y-3">
             {posts.map((p) => (
               <li key={p.id}>
-                <Card className="p-4">
+                <Card className="p-5">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="brand">{getPlatform(p.platform).label}</Badge>
-                    <span className="text-xs text-muted">{formatDateTime(p.publishedAt)}</span>
-                    {p.variantId && <Badge>Caption linked</Badge>}
-                    {p.briefId && <Badge>Brief linked</Badge>}
+                    <span className="text-xs text-muted">{formatDateTime(p.publishedAt, lang)}</span>
+                    {p.variantId && <Badge>{t.captionLinked}</Badge>}
+                    {p.briefId && <Badge>{t.briefLinked}</Badge>}
                   </div>
-                  <a href={p.url} target="_blank" rel="noopener noreferrer nofollow" className="mt-1 block break-all text-sm text-brand underline">
+                  <a href={p.url} target="_blank" rel="noopener noreferrer nofollow" className="mt-1.5 inline-flex items-center gap-1 break-all text-sm text-brand hover:underline">
                     {p.url}
+                    <ExternalLink aria-hidden className="h-3 w-3 shrink-0" />
                   </a>
-                  <form action={updatePublishedAction.bind(null, p.id)} className="mt-3 grid gap-2 sm:grid-cols-7">
+                  <form action={updatePublishedAction.bind(null, p.id)} className="mt-4 grid gap-3 sm:grid-cols-7">
                     <div className="sm:col-span-2">
-                      <label className="text-xs font-semibold" htmlFor={`o-${p.id}`}>How did it do (your view)?</label>
+                      <label className="mb-1 block text-xs font-semibold" htmlFor={`o-${p.id}`}>
+                        {t.howDid}
+                      </label>
                       <Select id={`o-${p.id}`} name="outcome" defaultValue={p.outcome}>
-                        <option value="unknown">Not rated</option>
-                        <option value="better">Better than usual</option>
-                        <option value="usual">About usual</option>
-                        <option value="worse">Worse than usual</option>
+                        {(["unknown", "better", "usual", "worse"] as const).map((k) => (
+                          <option key={k} value={k}>
+                            {t.outcomes[k]}
+                          </option>
+                        ))}
                       </Select>
                     </div>
-                    {(["views", "likes", "comments", "shares", "saves"] as const).map((k) => (
+                    {METRICS.map((k) => (
                       <div key={k}>
-                        <label className="text-xs font-semibold capitalize" htmlFor={`${k}-${p.id}`}>{k}</label>
+                        <label className="mb-1 block text-xs font-semibold" htmlFor={`${k}-${p.id}`}>
+                          {t.metrics[k]}
+                        </label>
                         <Input id={`${k}-${p.id}`} name={k} type="number" min={0} defaultValue={p.manualMetrics[k] ?? ""} placeholder="—" />
                       </div>
                     ))}
                     <div className="sm:col-span-7">
-                      <label className="text-xs font-semibold" htmlFor={`n-${p.id}`}>Notes</label>
+                      <label className="mb-1 block text-xs font-semibold" htmlFor={`n-${p.id}`}>
+                        {t.notes}
+                      </label>
                       <Input id={`n-${p.id}`} name="notes" defaultValue={p.notes} maxLength={1000} />
                     </div>
                     <div className="flex gap-2 sm:col-span-7">
-                      <Button type="submit" size="sm" variant="secondary">Save feedback</Button>
+                      <Button type="submit" size="sm" variant="secondary">
+                        {t.saveFeedback}
+                      </Button>
                       <Button type="submit" size="sm" variant="ghost" className="text-danger" formAction={deletePublishedAction.bind(null, p.id)}>
-                        Delete
+                        <Trash2 aria-hidden className="h-3.5 w-3.5" />
+                        {d.common.delete}
                       </Button>
                     </div>
                   </form>
-                  <p className="mt-1 text-[11px] text-muted">Manually entered by you · not platform data.</p>
+                  <p className="mt-2 text-[11px] text-muted">{t.manualNote}</p>
                 </Card>
               </li>
             ))}

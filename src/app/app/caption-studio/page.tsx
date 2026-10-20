@@ -11,9 +11,13 @@ import { hashtagStatusesForMany } from "@/lib/services/captions";
 import { toClientMessage, type ClientMessage } from "@/lib/services/serialize";
 import { isPlatformId } from "@/lib/domain/platforms";
 import { config } from "@/lib/config";
+import { getServerDict } from "@/lib/i18n/server";
 import { Studio } from "./studio";
 
-export const metadata = { title: "Caption Studio" };
+export async function generateMetadata() {
+  const { d } = await getServerDict();
+  return { title: d.studio.title };
+}
 
 export default async function CaptionStudioPage(props: PageProps<"/app/caption-studio">) {
   const user = await requireUser();
@@ -21,6 +25,7 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
   const db = await getDb();
   const profile = await getProfile(db, user.id);
   const conversations = await listConversations(db, user.id);
+  const { d } = await getServerDict();
 
   const convId = typeof sp.c === "string" ? sp.c : null;
   const conv = convId ? await getConversation(db, user.id, convId) : null;
@@ -53,7 +58,7 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
     if (opp) {
       opportunityId = opp.id;
       const angle = typeof sp.angle === "string" ? opp.angles[Number(sp.angle)] : opp.angles[0];
-      prefill = `Video idea: ${opp.title}.${angle ? ` Angle: ${angle.title} — ${angle.description}` : ""}\nIske liye caption aur hashtags do.`;
+      prefill = d.studio.prefillOpp(opp.title, angle ? `${angle.title} — ${angle.description}` : null);
     }
   }
   if (!conv && typeof sp.brief === "string") {
@@ -62,13 +67,13 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
     if (brief && content?.success) {
       opportunityId = brief.opportunityId;
       if (isPlatformId(brief.platform)) baseContext.platform = brief.platform;
-      prefill = `Video: ${brief.topic}\nAngle: ${content.data.originalAngle}\nHook: ${content.data.hooks[0] ?? ""}\nIske liye caption aur hashtags do.`;
+      prefill = d.studio.prefillBrief(brief.topic, content.data.originalAngle, content.data.hooks[0] ?? "");
     }
   }
 
   if (!conv && !prefill && typeof sp.topic === "string" && sp.topic.trim()) {
     // Names the trend and leaves the creator's own angle to fill in — a bare trend word gives the model nothing real to say.
-    prefill = `Trend: ${sp.topic.trim().slice(0, 200)}\nMera video: `;
+    prefill = d.trending.prefill(sp.topic.trim().slice(0, 200));
   }
 
   const ai = aiStatus();
@@ -83,7 +88,6 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
       prefill={prefill}
       opportunityId={opportunityId}
       ai={ai.kind === "live" || ai.kind === "open" ? { kind: "live" } : ai.kind === "local" ? { kind: "local", model: ai.model } : { kind: "none", missing: ai.missing, note: ai.note }}
-      uiLanguage={profile?.uiLanguage ?? "hinglish"}
       isDemo={user.isDemo}
     />
   );

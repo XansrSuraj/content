@@ -4,16 +4,21 @@ import { aiStatus, config } from "@/lib/config";
 import { isPlatformId } from "@/lib/domain/platforms";
 import { getProfile } from "@/lib/repo/creator";
 import { getOpportunity } from "@/lib/repo/discovery";
+import { getServerDict } from "@/lib/i18n/server";
 import { Notice, PageHeader } from "@/components/ui";
 import { BriefForm } from "./brief-form";
 
-export const metadata = { title: "New brief" };
+export async function generateMetadata() {
+  const { d } = await getServerDict();
+  return { title: d.briefs.newTitle };
+}
 
 export default async function NewBriefPage(props: PageProps<"/app/briefs/new">) {
   const user = await requireUser();
   const sp = await props.searchParams;
   const db = await getDb();
-  const profile = await getProfile(db, user.id);
+  const [profile, { d }] = await Promise.all([getProfile(db, user.id), getServerDict()]);
+  const t = d.briefs;
   const opp =
     typeof sp.opportunity === "string"
       ? await getOpportunity(db, sp.opportunity, user.isDemo && config().demoEnabled ? "any" : "observed")
@@ -24,19 +29,19 @@ export default async function NewBriefPage(props: PageProps<"/app/briefs/new">) 
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="New content brief" subtitle="Topic likho — baaki optional hai." />
+      <PageHeader title={t.newTitle} subtitle={t.newLead} />
       {ai.kind === "local" ? (
-        <Notice tone="info" title="Local AI (development)" className="mb-4">
-          Briefs are written by {ai.model} running on this computer. It can take a minute or two, and quality is lower than the production model.
+        <Notice tone="info" title={t.localTitle} className="mb-4">
+          {t.localText(ai.model)}
         </Notice>
       ) : ai.kind === "not_configured" ? (
-        <Notice tone="warn" title="AI not configured" className="mb-4">
-          You&apos;ll get a labeled template brief with blanks to fill. {ai.note ?? `Set ${ai.missing.join(" and ")} for personalised briefs.`}
+        <Notice tone="warn" title={t.noAiTitle} className="mb-4">
+          {t.noAiText}
         </Notice>
       ) : null}
       {opp?.isDemo && (
         <Notice tone="demo" className="mb-4">
-          Based on a demo opportunity. Its evidence is sample data.
+          {t.demoBased}
         </Notice>
       )}
       <BriefForm
@@ -44,7 +49,7 @@ export default async function NewBriefPage(props: PageProps<"/app/briefs/new">) 
           topic: opp ? opp.title : typeof sp.topic === "string" ? sp.topic.slice(0, 200) : "",
           opportunityId: opp?.id ?? "",
           angle: angle ? `${angle.title} — ${angle.description}` : "",
-          platform: (opp?.platforms.find((p) => profile?.platforms.includes(p)) ?? profile?.platforms.find(isPlatformId) ?? "instagram_reels"),
+          platform: opp?.platforms.find((p) => profile?.platforms.includes(p)) ?? profile?.platforms.find(isPlatformId) ?? "instagram_reels",
           language: profile?.contentLanguages[0] ?? "hinglish",
           tone: profile?.defaultTone ?? "conversational",
           personalExample: "",

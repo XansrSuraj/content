@@ -1,31 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, List, RefreshCw, SlidersHorizontal, Square } from "lucide-react";
 import type { CaptionContext } from "@/lib/domain/captions";
 import { TONES } from "@/lib/domain/options";
 import { getPlatform } from "@/lib/domain/platforms";
 import type { ClientMessage } from "@/lib/services/serialize";
-import { t, type UiLang } from "@/lib/i18n";
+import type { Dict } from "@/lib/i18n/en";
+import { useI18n } from "@/components/i18n-provider";
 import { Badge, Button, Notice, Select, cx } from "@/components/ui";
 import { ContextPanel } from "./context-panel";
 import { ConversationList, type ConvSummary } from "./conversation-list";
 import { ResultCard } from "./result-card";
-
-const QUICK_FOLLOWUPS = [
-  "Aur short karo.",
-  "Isko funny Hinglish mein likho.",
-  "Promotional kam rakho.",
-  "Meri first line same rakho.",
-  "YouTube Shorts ke liye adapt karo.",
-  "Emoji hata do.",
-  "Sirf final caption aur hashtags do.",
-];
-
-const STARTERS = [
-  "Aaj maine apne budget phone se cinematic video shoot kiya. Instagram ke liye better Hinglish caption aur hashtags do.",
-  "Ghar par cafe-style chai banayi, tapri wali feel ke saath. Reel ke liye funny caption do.",
-  "Exam se pehle 3 study tips ka video banaya. YouTube Shorts ke liye title aur caption do.",
-];
 
 type ApiErr = { code: string; message: string; retryable?: boolean; retryAfterSeconds?: number };
 type Live = { tokens: number; preview: string; startedAt: number };
@@ -56,7 +42,6 @@ export function Studio(props: {
   prefill: string;
   opportunityId: string | null;
   ai: { kind: "live" } | { kind: "local"; model: string } | { kind: "none"; missing: string[]; note?: string };
-  uiLanguage: UiLang;
   isDemo: boolean;
 }) {
   const [conversationId, setConversationId] = useState(props.conversationId);
@@ -81,7 +66,8 @@ export function Studio(props: {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const turnRef = useRef<string | null>(null);
-  const lang = props.uiLanguage;
+  const { d } = useI18n();
+  const s = d.studio;
   const isEmpty = messages.length === 0;
   const platform = getPlatform(context.platform);
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
@@ -189,7 +175,7 @@ export function Studio(props: {
         const data = await res.json().catch(() => null);
         dropTemp();
         setDraft(text);
-        setError(data?.error ?? { code: "network", message: "Something went wrong. Please try again.", retryable: true });
+        setError(data?.error ?? { code: "network", message: s.errors.generic, retryable: true });
         return;
       }
       let data: TurnResult | null = null;
@@ -219,7 +205,7 @@ export function Studio(props: {
       if (!data) {
         dropTemp();
         setDraft(text);
-        if (streamError?.code !== "cancelled") setError(streamError ?? { code: "network", message: "The connection closed early. Please retry.", retryable: true });
+        if (streamError?.code !== "cancelled") setError(streamError ?? { code: "network", message: s.errors.closedEarly, retryable: true });
         return;
       }
       const result: TurnResult = data;
@@ -246,7 +232,7 @@ export function Studio(props: {
       dropTemp();
       setDraft(text);
       if (!(err instanceof DOMException && err.name === "AbortError")) {
-        setError({ code: "network", message: "Network error. Check your connection and retry.", retryable: true });
+        setError({ code: "network", message: s.errors.network, retryable: true });
       }
     } finally {
       abortRef.current = null;
@@ -278,19 +264,19 @@ export function Studio(props: {
     const ctx = { ...context, tone: regenTone };
     setContext(ctx);
     send(
-      regenTone === context.tone ? "Wahi topic, teen naye aur alag options do." : `Same topic, teen naye options ${regenTone} tone mein do.`,
+      regenTone === context.tone ? s.regenerateMsgSame : s.regenerateMsgTone(d.options.tones[regenTone] ?? regenTone),
       ctx,
     );
   }
 
   return (
-    <div className="-mx-4 -my-6 grid h-[calc(100dvh-49px-4rem)] md:h-[calc(100dvh-49px)] md:grid-cols-[260px_1fr] lg:grid-cols-[260px_1fr_300px]">
+    <div className="-mx-4 -my-6 grid h-[calc(100dvh-49px-4rem)] md:h-[calc(100dvh-49px)] md:grid-cols-[260px_1fr] lg:grid-cols-[240px_1fr_300px] xl:grid-cols-[260px_1fr_340px]">
       {/* Conversation list: drawer on mobile, column on desktop */}
       <div className={cx("min-h-0 border-r border-line bg-surface md:block", listOpen ? "fixed inset-0 z-40 block overflow-y-auto pt-2" : "hidden")}>
         <div className="flex items-center justify-between px-3 py-2 md:hidden">
-          <p className="font-semibold">Conversations</p>
+          <p className="font-semibold">{s.conversations}</p>
           <Button variant="ghost" size="sm" onClick={() => setListOpen(false)}>
-            Close
+            {d.common.close}
           </Button>
         </div>
         <ConversationList items={conversations} activeId={conversationId} onChange={setConversations} />
@@ -299,19 +285,25 @@ export function Studio(props: {
       <section className="flex min-h-0 min-w-0 flex-col">
         <div className="flex items-center gap-2 border-b border-line px-4 py-2 lg:hidden">
           <Button variant="secondary" size="sm" onClick={() => setListOpen(true)} className="md:hidden">
-            Chats
+            <List aria-hidden className="h-3.5 w-3.5" />
+            {s.chats}
           </Button>
           <button
             type="button"
             onClick={() => setPanelOpen(true)}
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-left"
-            aria-label="Edit caption settings"
+            className="flex min-w-0 flex-1 items-center gap-1 text-left"
+            aria-label={s.editSettings}
           >
-            <Badge tone="brand">{platform.label}</Badge>
-            <Badge>{context.language}</Badge>
-            <Badge>{context.tone}</Badge>
-            {context.emoji === "none" && <Badge>No emoji</Badge>}
-            <span className="ml-1 shrink-0 text-xs font-semibold text-brand underline">Edit</span>
+            <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+              <Badge className="shrink-0 whitespace-nowrap" tone="brand">{platform.label}</Badge>
+              <Badge className="shrink-0 whitespace-nowrap">{d.options.contentLanguages[context.language] ?? context.language}</Badge>
+              <Badge className="shrink-0 whitespace-nowrap">{d.options.tones[context.tone] ?? context.tone}</Badge>
+              {context.emoji === "none" && <Badge className="shrink-0 whitespace-nowrap">{s.noEmoji}</Badge>}
+            </span>
+            <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-semibold text-brand">
+              <SlidersHorizontal aria-hidden className="h-3.5 w-3.5" />
+              {d.common.edit}
+            </span>
           </button>
         </div>
 
@@ -319,40 +311,33 @@ export function Studio(props: {
         <div ref={scrollRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto">
           <div ref={contentRef} className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6">
             {props.ai.kind === "none" && (
-              <Notice tone="warn" title="AI is not configured on this server">
-                Results are a <strong>template preview built from your own words</strong>, not AI rewrites.{" "}
-                {props.ai.note ?? (
-                  <>
-                    To enable real generation for free, set <code>AI_PROVIDER=ollama</code> in <code>.env.local</code> (needs Ollama), or set{" "}
-                    {props.ai.missing.join(" and ")}. Then restart the server.
-                  </>
-                )}
-                {props.isDemo && " The example conversation in the list shows what live AI output looks like."}
+              <Notice tone="warn" title={s.notices.noAiTitle}>
+                {s.notices.noAiText}
+                {props.isDemo && s.notices.demoExample}
               </Notice>
             )}
             {props.ai.kind === "local" && isEmpty && (
-              <Notice tone="info" title="Local AI (development)">
-                Captions come from <code>{props.ai.model}</code> running on this computer via Ollama — free, but slower and lower quality than
-                the production model. Check every caption before posting.
+              <Notice tone="info" title={s.notices.localTitle}>
+                {s.notices.localText(props.ai.model)}
               </Notice>
             )}
 
             {isEmpty && (
               <div className="pt-6 text-center">
-                <h1 className="text-2xl font-bold">{t(lang, "studio")}</h1>
-                <p className="mt-1 text-sm text-muted">{t(lang, "studioLead")}</p>
+                <h1 className="text-2xl font-bold">{s.title}</h1>
+                <p className="mt-1 text-sm text-muted">{s.lead}</p>
                 <div className="mt-6 grid gap-2 text-left sm:grid-cols-3">
-                  {STARTERS.map((s) => (
+                  {s.starters.map((st) => (
                     <button
-                      key={s}
+                      key={st}
                       type="button"
                       onClick={() => {
-                        setDraft(s);
+                        setDraft(st);
                         inputRef.current?.focus();
                       }}
                       className="rounded-xl border border-line bg-surface p-3 text-sm text-muted hover:border-brand hover:text-fg"
                     >
-                      {s}
+                      {st}
                     </button>
                   ))}
                 </div>
@@ -384,42 +369,53 @@ export function Studio(props: {
               ) : null,
             )}
 
-            {pending && <LiveProgress live={live} kind={props.ai.kind} />}
+            {pending && <LiveProgress live={live} kind={props.ai.kind} w={s.working} />}
 
             {error && (
               <Notice
                 tone="danger"
-                title={error.code === "quota" || error.code === "upstream_rate_limited" ? "Limit reached" : error.code === "local_unavailable" ? "Local AI unavailable" : "Couldn't generate captions"}
+                title={
+                  error.code === "quota" || error.code === "upstream_rate_limited"
+                    ? s.errors.titleLimit
+                    : error.code === "local_unavailable"
+                      ? s.errors.titleLocal
+                      : s.errors.titleDefault
+                }
               >
-                <p>{error.message}</p>
-                {error.retryAfterSeconds ? <p className="mt-1">Try again in about {Math.ceil(error.retryAfterSeconds / 60)} min.</p> : null}
+                <p>{s.errors.byCode[error.code] ?? error.message}</p>
+                {error.retryAfterSeconds ? <p className="mt-1">{s.errors.retryIn(Math.ceil(error.retryAfterSeconds / 60))}</p> : null}
                 {error.retryable !== false && error.code !== "quota" && lastSent && (
                   <Button size="sm" variant="secondary" className="mt-2" onClick={() => send(lastSent.message, lastSent.context)}>
-                    Retry
+                    {d.common.retry}
                   </Button>
                 )}
-                {error.code === "auth_error" && <p className="mt-1">The server&apos;s AI key was rejected. An admin needs to check the API key.</p>}
+                {error.code === "auth_error" && <p className="mt-1">{s.errors.authKey}</p>}
               </Notice>
             )}
 
             {!pending && lastAssistant && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <Button size="sm" variant="secondary" onClick={regenerate}>
-                  ↻ Naye options
+                  <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                  {s.regenerate}
                 </Button>
                 <label htmlFor="regen-tone" className="sr-only">
-                  Tone for new options
+                  {s.toneForNew}
                 </label>
                 <span className="inline-block w-40">
                   <Select id="regen-tone" value={regenTone} onChange={(e) => setRegenTone(e.target.value as CaptionContext["tone"])} className="h-8 py-0 text-xs">
                     {TONES.map((tn) => (
                       <option key={tn.id} value={tn.id}>
-                        {tn.label}
+                        {d.options.tones[tn.id] ?? tn.label}
                       </option>
                     ))}
                   </Select>
                 </span>
-                {applied.length > 0 && <span>Applied: {applied.join(" · ")}</span>}
+                {applied.length > 0 && (
+                  <span>
+                    {s.applied}: {applied.map((a) => s.appliedLabels[a] ?? a).join(" · ")}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -432,10 +428,10 @@ export function Studio(props: {
                 setAtBottom(true);
                 scrollToBottom();
               }}
-              aria-label="Scroll to latest message"
+              aria-label={s.scrollLatest}
               className="sticky bottom-3 left-full mr-4 ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface shadow-md"
             >
-              ↓
+              <ArrowDown aria-hidden className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -445,7 +441,7 @@ export function Studio(props: {
           <div className="mx-auto w-full max-w-3xl">
             {!isEmpty && (
               <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
-                {QUICK_FOLLOWUPS.map((q) => (
+                {s.quickFollowups.map((q) => (
                   <button
                     key={q}
                     type="button"
@@ -467,7 +463,7 @@ export function Studio(props: {
               className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 focus-within:border-brand"
             >
               <label htmlFor="composer" className="sr-only">
-                Message
+                {s.message}
               </label>
               <textarea
                 id="composer"
@@ -477,21 +473,24 @@ export function Studio(props: {
                 onKeyDown={onKeyDown}
                 rows={1}
                 maxLength={4000}
-                placeholder={isEmpty ? t(lang, "studioPlaceholder") : t(lang, "followUpPlaceholder")}
+                placeholder={isEmpty ? s.placeholderFirst : s.placeholderFollow}
                 className="max-h-[220px] min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] text-fg outline-none placeholder:text-muted/70"
               />
               {pending ? (
-                <Button type="submit" variant="secondary" aria-label="Stop generating" className="h-10 shrink-0 rounded-xl">
-                  ■ Stop
+                <Button type="submit" variant="secondary" aria-label={s.stopLabel} className="h-10 shrink-0 rounded-xl">
+                  <Square aria-hidden className="h-3.5 w-3.5 fill-current" />
+                  {s.stop}
                 </Button>
               ) : (
                 <Button type="submit" disabled={!draft.trim()} className="h-10 shrink-0 rounded-xl">
-                  {t(lang, "send")}
+                  <ArrowUp aria-hidden className="h-4 w-4" />
+                  {s.send}
                 </Button>
               )}
             </form>
             <p className="mt-1.5 hidden text-center text-[11px] text-muted sm:block">
-              Enter = send · Shift+Enter = new line{pending ? " · Esc = stop" : ""} · AI can make mistakes — check facts before posting.
+              {s.hint}
+              {pending ? s.hintStop : ""} · {s.disclaimer}
             </p>
           </div>
         </div>
@@ -500,12 +499,12 @@ export function Studio(props: {
       {/* Context panel: sheet on mobile/tablet, column on large screens */}
       <aside
         className={cx("min-h-0 overflow-y-auto border-l border-line bg-surface lg:block", panelOpen ? "fixed inset-0 z-40 block" : "hidden")}
-        aria-label="Caption settings"
+        aria-label={s.settingsLabel}
       >
         <div className="flex items-center justify-between px-4 pt-3 lg:hidden">
-          <p className="font-semibold">Caption settings</p>
+          <p className="font-semibold">{s.settingsLabel}</p>
           <Button variant="secondary" size="sm" onClick={() => setPanelOpen(false)}>
-            Done
+            {d.common.done}
           </Button>
         </div>
         <ContextPanel context={context} onChange={setContext} hasConversation={!isEmpty} />
@@ -515,7 +514,7 @@ export function Studio(props: {
 }
 
 /** Assistant "typing" state: elapsed time, progress and a live preview of option A when the provider streams. */
-function LiveProgress({ live, kind }: { live: Live | null; kind: "live" | "local" | "none" }) {
+function LiveProgress({ live, kind, w }: { live: Live | null; kind: "live" | "local" | "none"; w: Dict["studio"]["working"] }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -524,12 +523,12 @@ function LiveProgress({ live, kind }: { live: Live | null; kind: "live" | "local
   const seconds = live ? Math.max(0, Math.round((now - live.startedAt) / 1000)) : 0;
   const label =
     kind === "live"
-      ? "Captions likh rahe hain…"
+      ? w.live
       : kind === "local"
         ? live?.tokens
-          ? "Local model likh raha hai…"
-          : "Local model aapka message padh raha hai…"
-        : "Building template preview…";
+          ? w.localWriting
+          : w.localReading
+        : w.template;
   return (
     <div role="status" aria-live="polite" className="rounded-2xl border border-line bg-surface p-4 text-sm">
       <div className="flex items-center justify-between gap-2 text-muted">
@@ -545,7 +544,7 @@ function LiveProgress({ live, kind }: { live: Live | null; kind: "live" | "local
       </div>
       {live?.preview ? (
         <div className="mt-3 rounded-lg bg-surface-2 p-3">
-          <p className="text-xs font-semibold text-muted">Option A (writing…)</p>
+          <p className="text-xs font-semibold text-muted">{w.optionWriting}</p>
           <p className="mt-1 whitespace-pre-wrap">{live.preview}</p>
         </div>
       ) : (

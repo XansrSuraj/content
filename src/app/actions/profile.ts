@@ -8,6 +8,15 @@ import { destroyAllSessions, requireUser } from "@/lib/auth/session";
 import { CATEGORY_IDS, LANGUAGE_IDS, REGION_IDS, TONE_IDS } from "@/lib/domain/options";
 import { PLATFORM_IDS } from "@/lib/domain/platforms";
 import { deleteAccount, deleteHistory, setConsent, upsertProfile } from "@/lib/repo/creator";
+import { cookies } from "next/headers";
+import { config } from "@/lib/config";
+import { LANG_COOKIE } from "@/lib/i18n";
+import { getServerDict } from "@/lib/i18n/server";
+
+/** Keep the language cookie in sync when the creator changes app language in a form. */
+async function syncLangCookie(lang: string) {
+  (await cookies()).set(LANG_COOKIE, lang, { path: "/", sameSite: "lax", secure: config().isProduction, maxAge: 60 * 60 * 24 * 365 });
+}
 
 const ProfileForm = z.object({
   displayName: z.string().trim().max(80).default(""),
@@ -16,7 +25,7 @@ const ProfileForm = z.object({
   contentLanguages: z.array(z.enum(LANGUAGE_IDS)).min(1).max(3).default(["hinglish"]),
   region: z.enum(REGION_IDS).default("IN"),
   defaultTone: z.enum(TONE_IDS).default("conversational"),
-  uiLanguage: z.enum(["hinglish", "english"]).default("hinglish"),
+  uiLanguage: z.enum(["hinglish", "english", "hindi"]).default("hinglish"),
   styleNotes: z.string().trim().max(600).default(""),
   personalExamples: z.string().trim().max(1000).default(""),
   weeklyTimeHours: z.coerce.number().int().min(0).max(100).nullable().default(null),
@@ -46,9 +55,10 @@ function parseForm(form: FormData) {
 export async function completeOnboarding(_prev: ProfileState, form: FormData): Promise<ProfileState> {
   const user = await requireUser();
   const parsed = parseForm(form);
-  if (!parsed.success) return { error: "Please check the highlighted choices." };
+  if (!parsed.success) return { error: (await getServerDict()).d.onboarding.error };
   const db = await getDb();
   await upsertProfile(db, user.id, { ...parsed.data, onboardedAt: new Date() });
+  await syncLangCookie(parsed.data.uiLanguage);
   redirect(form.get("next") === "studio" ? "/app/caption-studio" : "/app");
 }
 
@@ -62,9 +72,10 @@ export async function skipOnboarding(): Promise<void> {
 export async function updateProfile(_prev: ProfileState, form: FormData): Promise<ProfileState> {
   const user = await requireUser();
   const parsed = parseForm(form);
-  if (!parsed.success) return { error: "Please check your choices." };
+  if (!parsed.success) return { error: (await getServerDict()).d.profile.error };
   const db = await getDb();
   await upsertProfile(db, user.id, { ...parsed.data });
+  await syncLangCookie(parsed.data.uiLanguage);
   revalidatePath("/app", "layout");
   return { saved: true };
 }

@@ -51,7 +51,7 @@ export const creatorProfiles = pgTable("creator_profiles", {
   platforms: jsonb("platforms").$type<string[]>().notNull().default([]),
   contentLanguages: jsonb("content_languages").$type<string[]>().notNull().default(["hinglish"]),
   region: text("region").notNull().default("IN"),
-  uiLanguage: text("ui_language", { enum: ["hinglish", "english"] }).notNull().default("hinglish"),
+  uiLanguage: text("ui_language", { enum: ["hinglish", "english", "hindi"] }).notNull().default("hinglish"),
   defaultTone: text("default_tone").notNull().default("conversational"),
   styleNotes: text("style_notes").notNull().default(""),
   personalExamples: text("personal_examples").notNull().default(""),

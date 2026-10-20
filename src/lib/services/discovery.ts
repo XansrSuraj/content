@@ -8,6 +8,7 @@ import {
   freshness,
   rankForCreator,
   type Confidence,
+  type RankReason,
   type Freshness,
 } from "@/lib/domain/opportunities";
 import { getProfile, listFeedback, personalizationAllowed } from "@/lib/repo/creator";
@@ -35,7 +36,7 @@ export interface FeedItem {
   evidence: Observation[];
   confidence: Confidence;
   freshness: Freshness;
-  reasons: string[];
+  reasons: RankReason[];
   saved: boolean;
 }
 

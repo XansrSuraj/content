@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
+import { localeFor, type Lang } from "@/lib/i18n";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -115,7 +116,7 @@ export function Textarea(props: ComponentProps<"textarea">) {
 }
 
 export function Select(props: ComponentProps<"select">) {
-  return <select {...props} className={cx(INPUT, "h-10 pr-8", props.className)} />;
+  return <select {...props} className={cx(INPUT, "h-10 pl-2.5 pr-7", props.className)} />;
 }
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
@@ -140,16 +141,16 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-export function formatDateTime(d: Date | string | null | undefined): string {
-  if (!d) return "Unknown";
+export function formatDateTime(d: Date | string | null | undefined, lang: Lang = "english"): string {
+  if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(date) + " IST";
+  return new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(date) + " IST";
 }
 
-export function formatDate(d: Date | string | null | undefined): string {
-  if (!d) return "Unknown";
+export function formatDate(d: Date | string | null | undefined, lang: Lang = "english"): string {
+  if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(date);
+  return new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(date);
 }
 
 /** Request-time helpers kept outside component bodies. */
@@ -171,7 +172,7 @@ const MODE_BADGE = {
 } as const;
 
 /** How a piece of content was generated — always visible to the creator. */
-export function ModeBadge({ mode }: { mode: keyof typeof MODE_BADGE }) {
+export function ModeBadge({ mode, label }: { mode: keyof typeof MODE_BADGE; label?: string }) {
   const m = MODE_BADGE[mode];
-  return <Badge tone={m.tone}>{m.text}</Badge>;
+  return <Badge tone={m.tone}>{label ?? m.text}</Badge>;
 }

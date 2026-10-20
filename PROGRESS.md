@@ -117,6 +117,15 @@ Keep this file current so work can resume across sessions.
 - **Server:** one hashtag-evidence query per conversation load (was one per message).
 - **Tests:** the new E2E "chat composer behaves like a chat app" test, 8/8 E2E, 94 unit.
 
+## Session 7 (2026-10-20): three-language UI + professional polish
+- **Languages:** the whole app UI is available in English, Hinglish and Hindi (Devanagari). Dictionaries live in `src/lib/i18n/{en,hinglish,hindi}.ts`; `en.ts` is the master and the others are typed `Dict`, so a missing key fails typecheck.
+- **How the language is chosen:** `getLang()` checks the `ts_lang` cookie, then `profile.uiLanguage`, then defaults to Hinglish. A switcher is in the landing header, the app header (compact) and Settings (segmented). `setLanguage` saves both the cookie and the profile.
+- **App language vs caption language:** these are independent. The app language changes menus and messages; the caption language (in the profile and context panel) decides what the AI writes.
+- **Quick-reply chips are translated.** The follow-up parser (`applyFollowUpToContext`) now understands Devanagari and more English phrasings, and a unit test checks that every chip in every language applies its constraint. The "Applied" chips are translated through `studio.appliedLabels`.
+- **Polish:** unicode glyphs replaced with lucide icons; a single status indicator in the header; a new logo; settings panel dropdowns no longer truncated (wider panel on xl); chat list actions overlay on hover instead of taking up title width; one-line mobile settings strip; short mobile tab labels.
+- **Not translated (intentional):** admin pages; source catalog descriptions; AI/template output metadata (written by the model or the template).
+- **Tests:** 102 unit; 8/8 E2E (with `ts_lang=english` pinned through `e2e/fixtures.ts`), including a new test that switches English → Hindi → Hinglish and checks there is no horizontal overflow. Two E2E checks now accept either "trend source off" or real trend data, because the result depends on the env.
+
 ## Next steps
 - Set `ADMIN_EMAILS` on Render to the owner's email.
 - Optional: make the GitHub repo private; add GitHub Actions secrets for background trend refresh.

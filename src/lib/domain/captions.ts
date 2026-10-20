@@ -114,21 +114,21 @@ export function applyFollowUpToContext(message: string, ctx: CaptionContext, ori
   const next: CaptionContext = { ...ctx, notes: [...ctx.notes], preserveTerms: [...ctx.preserveTerms] };
   const applied: string[] = [];
 
-  if (/emoji\s*(hata|remove|mat|nahi|no\b|band)|no emoji|without emoji/.test(m)) {
+  if (/emoji\s*(hata|remove|mat|nahi|no\b|band)|(no|remove|without) emoji|इमोजी\s*(हटा|नहीं|मत|बंद)/.test(m)) {
     next.emoji = "none";
     applied.push("Emoji off");
   }
-  if (/\b(short|chhota|chota|chhoti|chhote|shorter|concise)\b/.test(m)) {
+  if (/\b(short|chhota|chota|chhoti|chhote|shorter|concise)\b|छोट[ाीे]/.test(m)) {
     next.length = "short";
     applied.push("Length: short");
-  } else if (/\b(lamba|longer|long|detail)\b/.test(m) && !/\blong video\b/.test(m)) {
+  } else if ((/\b(lamba|longer|long|detail)\b/.test(m) || /लंब[ाीे]/.test(m)) && !/\blong video\b/.test(m)) {
     next.length = "long";
     applied.push("Length: long");
   }
-  if (/\b(funny|mazedaar|comedy|hasao)\b/.test(m)) {
+  if (/\b(funny|mazedaar|comedy|hasao)\b|मज़?ेदार|फ़?नी/.test(m)) {
     next.tone = "funny";
     applied.push("Tone: funny");
-  } else if (/\b(emotional|dil se)\b/.test(m)) {
+  } else if (/\b(emotional|dil se)\b|भावुक|दिल से/.test(m)) {
     next.tone = "emotional";
     applied.push("Tone: emotional");
   } else if (/\bprofessional\b/.test(m)) {
@@ -144,7 +144,7 @@ export function applyFollowUpToContext(message: string, ctx: CaptionContext, ori
   if (/\bhinglish\b/.test(m)) {
     next.language = "hinglish";
     applied.push("Language: Hinglish");
-  } else if (/\b(hindi|devanagari)\b/.test(m) && !/hinglish/.test(m)) {
+  } else if ((/\b(hindi|devanagari)\b/.test(m) || /हि[ंन्]दी में/.test(m)) && !/hinglish/.test(m)) {
     next.language = "hindi";
     applied.push("Language: Hindi");
   } else if (/\b(in english|english mein|english me)\b/.test(m)) {
@@ -167,18 +167,18 @@ export function applyFollowUpToContext(message: string, ctx: CaptionContext, ori
     next.platform = "tiktok";
     applied.push("Platform: TikTok");
   }
-  if (/(first line|pehli line|pahli line|starting line).*(same|wahi|mat badlo|keep|rakho)/.test(m)) {
+  if (/(first line|pehli line|pahli line|starting line).*(same|wahi|mat badlo|keep|rakho)|keep (my |the )?first line|पहली लाइन.*(वही|same|मत बदलो|रखो)/.test(m)) {
     const first = originalCaption.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? null;
     if (first) {
       next.keepFirstLine = first.slice(0, 300);
       applied.push("First line locked");
     }
   }
-  if (/(promotional|promo|salesy|bechne).*(kam|less|mat|nahi)|less promotional|kam promotional/.test(m)) {
+  if (/(promotional|promo|salesy|bechne).*(kam|less|mat|nahi)|less promotional|kam promotional|प्रमोशन\S*\s*कम/.test(m)) {
     addNote(next, "Keep it less promotional");
     applied.push("Less promotional");
   }
-  if (/sirf.*(final|caption).*(hashtag)|only.*final.*caption|just the caption/.test(m)) {
+  if (/sirf.*(final|caption).*(hashtag)|only.*final.*caption|just the caption|सिर्फ़?.*कैप्शन/.test(m)) {
     next.outputMode = "final_only";
     applied.push("Final caption + hashtags only");
   }

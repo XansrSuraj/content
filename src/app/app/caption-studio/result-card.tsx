@@ -2,19 +2,21 @@
 
 import { useState } from "react";
 import { captionWithHashtags, type CaptionResult } from "@/lib/domain/captions";
-import { NOT_VERIFIED_NOTICE, dedupeHashtags, hashtagsForCopy } from "@/lib/domain/hashtags";
+import { dedupeHashtags, hashtagsForCopy } from "@/lib/domain/hashtags";
 import { getPlatform } from "@/lib/domain/platforms";
 import type { ClientHashtagStatus, ClientMessage } from "@/lib/services/serialize";
+import { Check, ChevronDown, ChevronUp, CircleAlert, Dot, Pencil } from "lucide-react";
+import { useI18n } from "@/components/i18n-provider";
 import { CopyButton } from "@/components/copy-button";
 import { Badge, Button, Card, Textarea, cx, formatDateTime } from "@/components/ui";
 
-const MODE_LABEL = {
-  live_ai: { tone: "ok" as const, text: "Live AI" },
-  open_model: { tone: "ok" as const, text: "Open-source AI" },
-  local_ai: { tone: "info" as const, text: "Local AI (development)" },
-  template_preview: { tone: "warn" as const, text: "Template preview — not AI" },
-  example: { tone: "accent" as const, text: "Example (pre-written, not generated from your input)" },
-};
+const MODE_TONE = {
+  live_ai: "ok",
+  open_model: "ok",
+  local_ai: "info",
+  template_preview: "warn",
+  example: "accent",
+} as const;
 
 export function ResultCard({
   message,
@@ -32,31 +34,32 @@ export function ResultCard({
   /** Older replies collapse to the recommended caption, like chat apps keep history scannable. */
   compact?: boolean;
 }) {
+  const { d } = useI18n();
+  const r = d.result;
   const platform = getPlatform(platformId);
-  const mode = message.mode ? MODE_LABEL[message.mode] : null;
+  const mode = message.mode ? { tone: MODE_TONE[message.mode], text: d.modes[message.mode] } : null;
   const [showAll, setShowAll] = useState(outputMode === "full");
   const [expanded, setExpanded] = useState(false);
   const recommended = result.variants.find((v) => v.id === result.recommendedVariantId) ?? result.variants[0];
   const ordered = [recommended, ...result.variants.filter((v) => v.id !== recommended.id)];
   const statusByTag = new Map(message.hashtags.map((h) => [h.tag.toLowerCase(), h]));
-  const allText = ordered.map((v) => `Option ${v.id} (${v.approach}):\n${captionWithHashtags(v.caption, v.hashtags)}`).join("\n\n");
+  const allText = ordered.map((v) => `${r.option(v.id)} (${v.approach}):\n${captionWithHashtags(v.caption, v.hashtags)}`).join("\n\n");
 
   if (compact && !expanded) {
     return (
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
           {mode && <Badge tone={mode.tone}>{mode.text}</Badge>}
-          <span className="text-xs text-muted">
-            Recommended: Option {recommended.id} · {recommended.approach}
-          </span>
+          <span className="text-xs text-muted">{r.recommendedShort(recommended.id, recommended.approach)}</span>
         </div>
         <div className="p-4">
           <p className="line-clamp-4 whitespace-pre-wrap text-[15px] leading-relaxed">{recommended.caption}</p>
           <p className="mt-1 truncate text-xs text-muted">{recommended.hashtags.join(" ")}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <CopyButton text={captionWithHashtags(recommended.caption, recommended.hashtags)} label="Copy" />
+            <CopyButton text={captionWithHashtags(recommended.caption, recommended.hashtags)} label={d.common.copy} />
             <Button size="sm" variant="ghost" onClick={() => setExpanded(true)}>
-              Show all 3 options & details
+              <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+              {r.showAll}
             </Button>
           </div>
         </div>
@@ -68,12 +71,13 @@ export function ResultCard({
     <Card className="max-w-3xl overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
         {mode && <Badge tone={mode.tone}>{mode.text}</Badge>}
-        <span className="text-xs text-muted">For {platform.label}</span>
+        <span className="text-xs text-muted">{r.forPlatform(platform.label)}</span>
         <span className="ml-auto flex items-center gap-1">
-          <CopyButton text={allText} label="Copy all" variant="ghost" />
+          <CopyButton text={allText} label={r.copyAll} variant="ghost" />
           {compact && (
             <Button size="sm" variant="ghost" onClick={() => setExpanded(false)}>
-              Collapse
+              <ChevronUp aria-hidden className="h-3.5 w-3.5" />
+              {r.collapse}
             </Button>
           )}
         </span>
@@ -81,7 +85,7 @@ export function ResultCard({
 
       <div className="space-y-4 p-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Samjha</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{r.understood}</p>
           <p className="text-sm">{result.topicSummary}</p>
         </div>
 
@@ -89,12 +93,12 @@ export function ResultCard({
           <div className="rounded-lg bg-info-soft p-3 text-sm">
             {result.assumptions.map((a) => (
               <p key={a}>
-                <span className="font-semibold">Assumption:</span> {a}
+                <span className="font-semibold">{r.assumption}</span> {a}
               </p>
             ))}
             {result.clarifyingQuestion && (
               <p className="mt-1">
-                <span className="font-semibold">Question:</span> {result.clarifyingQuestion}
+                <span className="font-semibold">{r.question}</span> {result.clarifyingQuestion}
               </p>
             )}
           </div>
@@ -116,7 +120,8 @@ export function ResultCard({
           ))}
           {!showAll && (
             <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
-              Show the other 2 options
+              <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+              {r.showOther}
             </Button>
           )}
         </div>
@@ -124,12 +129,12 @@ export function ResultCard({
         {outputMode === "full" && (
           <>
             {result.hooks.length > 0 && (
-              <Section title="Opening hook alternatives">
+              <Section title={r.hooks}>
                 <ul className="space-y-1">
                   {result.hooks.map((h) => (
                     <li key={h} className="flex items-start justify-between gap-2 text-sm">
                       <span>{h}</span>
-                      <CopyButton text={h} label="Copy" />
+                      <CopyButton text={h} label={d.common.copy} />
                     </li>
                   ))}
                 </ul>
@@ -141,7 +146,7 @@ export function ResultCard({
             <HashtagSection result={result} statuses={message.hashtags} platformId={platformId} />
 
             {result.keywords.length > 0 && (
-              <Section title="Search phrases viewers might use">
+              <Section title={r.searchPhrases}>
                 <div className="flex flex-wrap gap-1">
                   {result.keywords.map((k) => (
                     <Badge key={k}>{k}</Badge>
@@ -151,7 +156,7 @@ export function ResultCard({
             )}
 
             {result.improvements.length > 0 && (
-              <Section title="What changed">
+              <Section title={r.whatChanged}>
                 <ul className="list-disc space-y-0.5 pl-5 text-sm">
                   {result.improvements.map((i) => (
                     <li key={i}>{i}</li>
@@ -184,10 +189,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function TagChip({ tag, status }: { tag: string; status?: ClientHashtagStatus }) {
+  const { d } = useI18n();
   const tone = status?.status === "verified" ? "ok" : status?.status === "demo" ? "accent" : "neutral";
-  const label = status?.status === "verified" ? "observed" : status?.status === "demo" ? "demo" : null;
+  const label = status?.status === "verified" ? d.result.tagObserved : status?.status === "demo" ? d.result.tagDemo : null;
   return (
-    <Badge tone={tone} title={label ? `${label} evidence available` : "Suggestion — trend status not verified"}>
+    <Badge tone={tone} title={label ?? d.result.tagSuggestion}>
       {tag}
       {label && <span className="text-[10px] uppercase">· {label}</span>}
     </Badge>
@@ -213,6 +219,8 @@ function VariantBlock({
   statusByTag: Map<string, ClientHashtagStatus>;
   trendTitles: string[];
 }) {
+  const { d } = useI18n();
+  const r = d.result;
   const platform = getPlatform(platformId);
   const rule = platform.hashtagRule;
   const [editing, setEditing] = useState(false);
@@ -237,20 +245,24 @@ function VariantBlock({
   return (
     <div className={cx("rounded-lg border p-3", recommended ? "border-brand bg-brand-soft/40" : "border-line")}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-sm font-bold">Option {variant.id}</span>
+        <span className="text-sm font-bold">{r.option(variant.id)}</span>
         <Badge tone="brand">{variant.approach}</Badge>
-        {recommended && <Badge tone="ok">Recommended</Badge>}
+        {recommended && <Badge tone="ok">{r.recommended}</Badge>}
       </div>
-      {reason && <p className="mb-2 text-xs text-muted">Why: {reason}</p>}
+      {reason && (
+        <p className="mb-2 text-xs text-muted">
+          {r.why} {reason}
+        </p>
+      )}
 
       {editing ? (
         <div className="space-y-2">
           <label className="sr-only" htmlFor={`edit-${messageId}-${variant.id}`}>
-            Edit caption
+            {r.editCaption}
           </label>
           <Textarea id={`edit-${messageId}-${variant.id}`} value={text} onChange={(e) => setText(e.target.value)} rows={5} maxLength={2200} />
           <label className="text-xs font-semibold" htmlFor={`tags-${messageId}-${variant.id}`}>
-            Hashtags (space separated)
+            {r.hashtagsSpace}
           </label>
           <Textarea id={`tags-${messageId}-${variant.id}`} value={tagsText} onChange={(e) => setTagsText(e.target.value)} rows={2} className="min-h-0" />
         </div>
@@ -265,26 +277,28 @@ function VariantBlock({
       </div>
       {overLimit && (
         <p className="mt-1 text-xs text-warn">
-          {tags.length} hashtags is above the configured {platform.label} limit of {rule.hardLimit}. Copy uses the first {copyTags.length}.
+          {r.overLimit(tags.length, platform.label, rule.hardLimit ?? 0, copyTags.length)}
         </p>
       )}
 
       <PackagingCheck text={text} tags={tags} platformId={platformId} trendTitles={trendTitles} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <CopyButton text={text} label="Copy caption" />
-        <CopyButton text={copyTags.join(" ")} label="Copy hashtags" />
-        <CopyButton text={captionWithHashtags(text, copyTags)} label={`Copy for ${platform.label}`} variant="primary" />
+        <CopyButton text={text} label={r.copyCaption} />
+        <CopyButton text={copyTags.join(" ")} label={r.copyHashtags} />
+        <CopyButton text={captionWithHashtags(text, copyTags)} label={r.copyFor(platform.label)} variant="primary" />
         <Button size="sm" variant="ghost" onClick={() => setEditing((e) => !e)}>
-          {editing ? "Done editing" : "Edit"}
+          {!editing && <Pencil aria-hidden className="h-3.5 w-3.5" />}
+          {editing ? d.common.doneEditing : d.common.edit}
         </Button>
         <Button size="sm" variant="secondary" onClick={save} disabled={saveState === "saving"}>
-          {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save"}
+          {saveState === "saving" ? d.common.saving : saveState === "saved" ? `${d.common.saved} ✓` : d.common.save}
         </Button>
-        {saveState === "error" && <span role="alert" className="text-xs text-danger">Save failed. Try again.</span>}
+        {saveState === "error" && <span role="alert" className="text-xs text-danger">{r.saveFailed}</span>}
       </div>
       <p className="mt-1 text-[11px] text-muted">
-        Copy for {platform.label} includes up to {copyTags.length} hashtag{copyTags.length === 1 ? "" : "s"} (TrendSaathi default). {rule.status === "official" ? "Platform rule from official help." : rule.status === "unverified" ? "Platform limit not officially confirmed." : "No official limit found."}
+        {r.copyNote(platform.label, copyTags.length)}{" "}
+        {rule.status === "official" ? r.ruleOfficial : rule.status === "unverified" ? r.ruleUnverified : r.ruleNone}
       </p>
     </div>
   );
@@ -296,12 +310,13 @@ function HashtagSection({ result, statuses, platformId }: { result: CaptionResul
   const verifiedTags = new Set([...verified, ...demo].map((s) => s.tag.toLowerCase()));
   const suggested = result.hashtagSuggestions.filter((h) => !verifiedTags.has(h.tag.toLowerCase()));
   const platform = getPlatform(platformId);
+  const { d } = useI18n();
 
   return (
-    <Section title="Hashtags">
+    <Section title={d.result.hashtags}>
       {suggested.length > 0 && (
         <div>
-          <p className="mb-1 text-xs text-muted">{NOT_VERIFIED_NOTICE}</p>
+          <p className="mb-1 text-xs text-muted">{d.result.notVerified}</p>
           <ul className="space-y-1">
             {suggested.map((h) => (
               <li key={h.tag} className="flex flex-wrap items-baseline gap-2 text-sm">
@@ -313,14 +328,15 @@ function HashtagSection({ result, statuses, platformId }: { result: CaptionResul
         </div>
       )}
       {verified.length > 0 && (
-        <EvidenceList title={`Observed in a ${platform.family === "youtube" ? "YouTube" : platform.label} source sample`} tone="ok" items={verified} />
+        <EvidenceList title={d.result.observedIn(platform.family === "youtube" ? "YouTube" : platform.label)} tone="ok" items={verified} />
       )}
-      {demo.length > 0 && <EvidenceList title="Demo examples — sample data, not real trend evidence" tone="accent" items={demo} />}
+      {demo.length > 0 && <EvidenceList title={d.result.demoExamples} tone="accent" items={demo} />}
     </Section>
   );
 }
 
 function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "accent"; items: ClientHashtagStatus[] }) {
+  const { lang, d } = useI18n();
   return (
     <div className="mt-3">
       <p className="mb-1 text-xs font-semibold">{title}</p>
@@ -330,14 +346,14 @@ function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "acc
             <Badge tone={tone}>{s.tag}</Badge>
             {s.evidence.map((e, i) => (
               <p key={i} className="mt-1 text-muted">
-                {e.sourceName} · {e.platform} · {e.geo} · observed {formatDateTime(e.observedAt)} · retrieved {formatDateTime(e.retrievedAt)}
+                {e.sourceName} · {e.platform} · {e.geo} · {d.result.observed} {formatDateTime(e.observedAt, lang)} · {d.result.retrieved} {formatDateTime(e.retrievedAt, lang)}
                 <br />
-                Coverage: {e.coverageNote}
+                {d.result.coverage} {e.coverageNote}
                 {e.url && (
                   <>
                     {" "}
                     <a href={e.url} target="_blank" rel="noopener noreferrer" className="underline">
-                      Source
+                      {d.common.source}
                     </a>
                   </>
                 )}
@@ -351,24 +367,23 @@ function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "acc
 }
 
 function TrendContextSection({ items }: { items: ClientMessage["contextUsed"] }) {
+  const { lang, d } = useI18n();
   if (items === null) return null;
   return (
-    <Section title="Trend context used">
+    <Section title={d.result.trendContext}>
       {items.length === 0 ? (
-        <p className="text-xs text-muted">
-          No matching topic in current Google Trends / Wikipedia data, so these captions are based on your text only.
-        </p>
+        <p className="text-xs text-muted">{d.result.trendNone}</p>
       ) : (
         <ul className="space-y-1.5">
           {items.map((i) => (
             <li key={i.title} className="rounded-lg border border-line p-2 text-xs">
               <span className="font-semibold">{i.title}</span>
-              {i.isDemo && <Badge tone="accent" className="ml-1">demo</Badge>}
+              {i.isDemo && <Badge tone="accent" className="ml-1">{d.result.tagDemo}</Badge>}
               <span className="block text-muted">
-                {i.sourceName} · {i.geo} · observed {formatDateTime(i.observedAt)}
+                {i.sourceName} · {i.geo} · {d.result.observed} {formatDateTime(i.observedAt, lang)}
                 {i.metric ? ` · ${i.metric}` : ""}
               </span>
-              <span className="block text-muted">Search/reading interest — not social-media virality.</span>
+              <span className="block text-muted">{d.result.trendLabel}</span>
             </li>
           ))}
         </ul>
@@ -379,6 +394,8 @@ function TrendContextSection({ items }: { items: ClientMessage["contextUsed"] })
 
 /** Honest packaging checks for one option. These are checks, not a prediction of performance. */
 function PackagingCheck({ text, tags, platformId, trendTitles }: { text: string; tags: string[]; platformId: string; trendTitles: string[] }) {
+  const { d } = useI18n();
+  const r = d.result;
   const platform = getPlatform(platformId);
   const rule = platform.hashtagRule;
   // The opening is the first sentence of the first line (captions are often one long line).
@@ -389,20 +406,27 @@ function PackagingCheck({ text, tags, platformId, trendTitles }: { text: string;
   const trendHit = trendTitles.find((t) => lowered.includes(t.toLowerCase()));
   const limit = rule.hardLimit;
   const checks: { ok: boolean | null; label: string }[] = [
-    { ok: firstWords <= 12, label: `Opening sentence: ${firstWords} words${firstWords <= 12 ? "" : " (long — viewers may scroll past)"}` },
+    { ok: firstWords <= 12, label: `${r.openingSentence(firstWords)}${firstWords <= 12 ? "" : r.openingLong}` },
     {
       ok: limit === null ? null : tags.length <= limit,
-      label: limit === null ? `${tags.length} hashtags (no official ${platform.label} limit found)` : `${tags.length} of max ${limit} hashtags${rule.status === "unverified" ? " (limit not officially confirmed)" : ""}`,
+      label: r.hashtagCount(tags.length, limit, platform.label, rule.status === "unverified"),
     },
-    { ok: trendHit ? true : null, label: trendHit ? `Mentions a current search topic: “${trendHit}”` : "No current search topic mentioned" },
+    { ok: trendHit ? true : null, label: trendHit ? r.mentionsTopic(trendHit) : r.noTopic },
   ];
   return (
     <div className="mt-2 rounded-lg bg-surface-2 p-2 text-[11px]">
-      <p className="font-semibold text-muted">Packaging check — not a prediction (no tool can predict virality)</p>
+      <p className="font-semibold text-muted">{r.packaging}</p>
       <ul className="mt-1 space-y-0.5">
         {checks.map((c) => (
-          <li key={c.label} className={c.ok === false ? "text-warn" : c.ok ? "text-ok" : "text-muted"}>
-            {c.ok === false ? "!" : c.ok ? "✓" : "·"} {c.label}
+          <li key={c.label} className={cx("flex items-center gap-1", c.ok === false ? "text-warn" : c.ok ? "text-ok" : "text-muted")}>
+            {c.ok === false ? (
+              <CircleAlert aria-hidden className="h-3 w-3 shrink-0" />
+            ) : c.ok ? (
+              <Check aria-hidden className="h-3 w-3 shrink-0" />
+            ) : (
+              <Dot aria-hidden className="h-3 w-3 shrink-0" />
+            )}
+            {c.label}
           </li>
         ))}
       </ul>

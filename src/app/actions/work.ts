@@ -24,6 +24,7 @@ import {
 } from "@/lib/repo/work";
 import { generateBrief } from "@/lib/services/briefs";
 import { config } from "@/lib/config";
+import { getServerDict } from "@/lib/i18n/server";
 
 const Id = z.string().min(1).max(64);
 
@@ -85,15 +86,16 @@ export async function createBriefAction(_prev: BriefFormState, form: FormData): 
     availableMinutes: minutes ? Number(minutes) : null,
     personalExample: form.get("personalExample") ?? "",
   });
-  if (!parsed.success) return { error: "Please add a topic (3–500 characters) and check the other fields." };
+  const { d } = await getServerDict();
+  if (!parsed.success) return { error: d.briefs.errors.invalid };
   const db = await getDb();
   const res = await generateBrief(db, user, parsed.data);
   if (!res.ok) {
     const e = res.error;
-    if (e.kind === "provider") return { error: `${e.message}${e.retryable ? " You can try again." : ""}` };
-    if (e.kind === "quota") return { error: e.message };
-    if (e.kind === "not_found") return { error: "That opportunity is no longer available." };
-    return { error: "Could not create the brief." };
+    if (e.kind === "provider") return { error: `${d.studio.errors.byCode[e.code] ?? e.message}${e.retryable ? d.briefs.errors.retry : ""}` };
+    if (e.kind === "quota") return { error: d.studio.errors.byCode.quota };
+    if (e.kind === "not_found") return { error: d.briefs.errors.gone };
+    return { error: d.briefs.errors.failed };
   }
   redirect(`/app/briefs/${res.brief.id}`);
 }
@@ -107,8 +109,9 @@ const lines = (v: FormDataEntryValue | null) =>
 export async function updateBriefAction(briefId: string, _prev: BriefFormState, form: FormData): Promise<BriefFormState> {
   const user = await requireUser();
   const db = await getDb();
+  const { d } = await getServerDict();
   const brief = await getBrief(db, user.id, Id.parse(briefId));
-  if (!brief) return { error: "Brief not found." };
+  if (!brief) return { error: d.briefs.editor.notFound };
   const current = BriefContentSchema.parse(brief.content);
   const next = BriefContentSchema.safeParse({
     ...current,
@@ -126,7 +129,7 @@ export async function updateBriefAction(briefId: string, _prev: BriefFormState, 
     factsToVerify: lines(form.get("factsToVerify")),
     lowEffortVersion: String(form.get("lowEffortVersion") ?? ""),
   });
-  if (!next.success) return { error: "Some fields are empty or too long. Angle, at least one hook and one beat are required." };
+  if (!next.success) return { error: d.briefs.editor.error };
   await updateBrief(db, user.id, brief.id, next.data);
   await recordEvent(db, user.id, "output_edited", { target: "brief", briefId: brief.id });
   redirect(`/app/briefs/${brief.id}?saved=1`);
@@ -195,18 +198,19 @@ export async function addPublishedAction(_prev: PublishedState, form: FormData):
     briefId: form.get("briefId") || undefined,
     notes: form.get("notes") ?? "",
   });
-  if (!parsed.success) return { error: "Please enter a full post link (https://…) and the date you published." };
+  const { d } = await getServerDict();
+  if (!parsed.success) return { error: d.published.errors.invalid };
   const url = new URL(parsed.data.url);
-  if (url.protocol !== "https:") return { error: "Links must start with https://" };
+  if (url.protocol !== "https:") return { error: d.published.errors.https };
   const family = getPlatform(parsed.data.platform).family;
   if (!PLATFORM_HOSTS[family].test(url.hostname)) {
-    return { error: `That doesn't look like a ${getPlatform(parsed.data.platform).label} link.` };
+    return { error: d.published.errors.platform(getPlatform(parsed.data.platform).label) };
   }
   // datetime-local has no zone; the form is labeled and pre-filled in IST.
   const rawDate = parsed.data.publishedAt;
   const publishedAt = new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(rawDate) ? rawDate : `${rawDate}+05:30`);
   if (Number.isNaN(publishedAt.getTime()) || publishedAt.getTime() > Date.now() + 86_400_000) {
-    return { error: "Please enter a valid publish date (not in the future)." };
+    return { error: d.published.errors.date };
   }
   const db = await getDb();
   // Linked items must belong to the same user.

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { buttonClass } from "./ui";
+import { useI18n } from "./i18n-provider";
 
 async function writeClipboard(text: string): Promise<boolean> {
   try {
@@ -42,6 +44,7 @@ export function CopyButton({
   variant?: "primary" | "secondary" | "ghost";
   onCopied?: () => void;
 }) {
+  const { d } = useI18n();
   const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
   return (
     <span className="inline-flex items-center gap-2">
@@ -56,10 +59,11 @@ export function CopyButton({
           setTimeout(() => setState("idle"), 2200);
         }}
       >
-        {state === "ok" ? "Copied ✓" : label}
+        {state === "ok" ? <Check aria-hidden className="h-3.5 w-3.5" /> : <Copy aria-hidden className="h-3.5 w-3.5" />}
+        {state === "ok" ? d.copyBtn.copied : label}
       </button>
       <span aria-live="polite" className="text-xs text-danger">
-        {state === "fail" ? "Copy failed — select the text and copy manually." : ""}
+        {state === "fail" ? d.common.copyFailed : ""}
       </span>
     </span>
   );
