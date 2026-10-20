@@ -132,14 +132,19 @@ export async function runCaptionTurn(
   }
 
   const opportunityId = conversation?.opportunityId ?? input.opportunityId ?? null;
-  const conversationText = `${originalInput}
-${input.message}`;
+  const d = context.details;
+  // Optional "More details" are part of what the video is about (entities, intent), never instructions.
+  const detailText = [d.videoDescription, d.preferredTeam, d.transcript.slice(0, 1500)].filter(Boolean).join("\n");
+  const conversationText = `${originalInput}\n${input.message}${detailText ? `\n${detailText}` : ""}`;
   // Match facts, stage and references first: their team names also sharpen the search-trend match.
   const sports = await buildSportsContext(db, user.id, {
     text: conversationText,
     matchId: context.matchId,
     publishAt: context.publishAt,
     timeZone: profile?.sports?.timezone || "Asia/Kolkata",
+    sportOverride: context.sportOverride,
+    aliasChoices: context.aliasChoices,
+    intentOverride: context.intentOverride,
   });
   // Search interest, platform observations and references — gated for relevance, from cached data only.
   const evidence = await buildEvidence(db, user.id, {
@@ -161,6 +166,7 @@ ${sports.trendTerms}`,
     ...(opportunityId ? await opportunityNotes(db, user, opportunityId) : []),
     ...sports.notes,
     ...evidence.notes,
+    ...(d.reference ? [`REFERENCE (creator-provided, not verified): "${d.reference}"`] : []),
   ];
 
   const started = Date.now();

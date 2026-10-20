@@ -28,6 +28,23 @@ export const CaptionContextSchema = z.object({
   publishAt: z.string().datetime({ offset: true }).nullable().default(null),
   /** Extra platforms to adapt the recommended option for, in the same request. */
   extraPlatforms: z.array(z.enum(PLATFORM_IDS)).max(2).default([]),
+  /** Optional details from "More details"; kept for every follow-up in the conversation. */
+  details: z
+    .object({
+      videoDescription: z.string().trim().max(200).default(""),
+      transcript: z.string().trim().max(4000).default(""),
+      preferredTeam: z.string().trim().max(80).default(""),
+      reference: z.string().trim().max(300).default(""),
+    })
+    .default({ videoDescription: "", transcript: "", preferredTeam: "", reference: "" }),
+  /** Answers to "which MI / which Ronaldo?": alias → chosen entity id. */
+  aliasChoices: z.record(z.string().max(30), z.string().max(60)).default({}),
+  /** Creator corrections from the interpretation chip ("not sports", "this is a recap"…). */
+  sportOverride: z.enum(["cricket", "football", "none"]).nullable().default(null),
+  intentOverride: z
+    .enum(["preview", "prediction", "analysis", "reaction", "recap", "historical_highlight", "meme", "fan_opinion"])
+    .nullable()
+    .default(null),
 });
 export type CaptionContext = z.infer<typeof CaptionContextSchema>;
 

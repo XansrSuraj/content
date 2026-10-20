@@ -182,3 +182,11 @@ describe("entity tables", () => {
     expect((await syncSportsSeed(db)).aliases).toBe(res.aliases);
   });
 });
+
+describe("creator answers", () => {
+  it("an alias choice resolves the ambiguity deterministically", () => {
+    const i = parseSportsIntent("MI ka match kal", { aliasChoices: { mi: "cricket:mi_capetown" } });
+    expect(i.teamIds).toEqual(["cricket:mi_capetown"]);
+    expect(i.question).toBeNull();
+  });
+});

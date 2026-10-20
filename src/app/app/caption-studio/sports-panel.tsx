@@ -6,7 +6,12 @@ import type { MatchSnapshot, SportsContextUsed } from "@/lib/db/schema";
 import { useI18n } from "@/components/i18n-provider";
 import { Badge, Button, Input, Notice, Select, formatDateTime } from "@/components/ui";
 
-const PROVIDER_NAME: Record<string, string> = { openfootball: "openfootball", openligadb: "OpenLigaDB", football_data: "football-data.org", cricapi: "CricketData.org" };
+const PROVIDER_NAME: Record<string, string> = {
+  openfootball: "openfootball",
+  openligadb: "OpenLigaDB",
+  football_data: "football-data.org",
+  cricapi: "CricketData.org",
+};
 
 const STAGE_TONE = { upcoming: "info", live: "ok", completed: "neutral", postponed: "warn", cancelled: "warn", unknown: "warn" } as const;
 
@@ -22,8 +27,9 @@ export const SportsPanel = forwardRef<
     isLatest: boolean;
     onChooseMatch: (matchId: string, vs: string) => void;
     onRefresh: () => void;
+    onAnswer?: (alias: string, id: string, name: string) => void;
   }
->(function SportsPanel({ sports, isLatest, onChooseMatch, onRefresh }, ref) {
+>(function SportsPanel({ sports, isLatest, onChooseMatch, onRefresh, onAnswer }, ref) {
   const { d, lang } = useI18n();
   const t = d.sports;
   const [current, setCurrent] = useState<MatchSnapshot | null>(null);
@@ -68,6 +74,19 @@ export const SportsPanel = forwardRef<
         </Notice>
       )}
 
+      {sports.question && sports.question.alias && isLatest && (
+        <div className="mb-3 rounded-lg bg-surface-2 p-2">
+          <p className="font-semibold">{d.flow.questionTitle(sports.question.alias)}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {sports.question.options.map((o) => (
+              <Button key={o.id} size="sm" variant="secondary" onClick={() => onAnswer?.(sports.question!.alias!, o.id, o.name)}>
+                {o.name}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {match ? (
         <MatchLine m={current ?? match} />
       ) : sports.candidates.length > 0 ? (
@@ -93,8 +112,9 @@ export const SportsPanel = forwardRef<
         <p className="text-xs text-muted">{t.noFixture}</p>
       ) : null}
 
-      {sports.sport && !match && (
-        adding ? (
+      {sports.sport &&
+        !match &&
+        (adding ? (
           <AddMatchForm
             sport={sports.sport}
             home={sports.teams[0] ?? ""}
@@ -109,9 +129,7 @@ export const SportsPanel = forwardRef<
           <Button size="sm" variant="ghost" className="mt-2" onClick={() => setAdding(true)}>
             {t.notListed}
           </Button>
-        )
-      )}
-
+        ))}
     </div>
   );
 });
@@ -133,7 +151,9 @@ function MatchLine({ m }: { m: MatchSnapshot }) {
       </p>
       {m.stage === "completed" && m.resultSummary && <p className="mt-1 text-xs">{m.resultSummary}</p>}
       <p className="mt-1 text-[11px] text-muted">
-        {m.statusSource === "creator" ? t.creatorEntered : `${t.source(PROVIDER_NAME[m.provider] ?? m.provider)} · ${t.checked(formatDateTime(m.statusCheckedAt, lang))}`}
+        {m.statusSource === "creator"
+          ? t.creatorEntered
+          : `${t.source(PROVIDER_NAME[m.provider] ?? m.provider)} · ${t.checked(formatDateTime(m.statusCheckedAt, lang))}`}
         {m.statusSource === "schedule_only" ? ` · ${t.scheduleOnly}` : ""}
       </p>
     </div>
@@ -206,7 +226,13 @@ function AddMatchForm({
         <Input aria-label={t.date} type="date" value={f.date} onChange={(e) => set("date", e.target.value)} />
         <Input aria-label={t.time} type="time" value={f.time} onChange={(e) => set("time", e.target.value)} />
       </div>
-      <Input aria-label={t.competition} placeholder={t.competition} value={f.competition} maxLength={80} onChange={(e) => set("competition", e.target.value)} />
+      <Input
+        aria-label={t.competition}
+        placeholder={t.competition}
+        value={f.competition}
+        maxLength={80}
+        onChange={(e) => set("competition", e.target.value)}
+      />
       {f.status === "finished" && (
         <Input aria-label={t.result} placeholder={t.result} value={f.result} maxLength={160} onChange={(e) => set("result", e.target.value)} />
       )}

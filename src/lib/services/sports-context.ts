@@ -65,10 +65,26 @@ export interface SportsContextResult {
 export async function buildSportsContext(
   db: DB,
   userId: string,
-  opts: { text: string; matchId: string | null; publishAt: string | null; timeZone: string; now?: Date },
+  opts: {
+    text: string;
+    matchId: string | null;
+    publishAt: string | null;
+    timeZone: string;
+    now?: Date;
+    /** Creator corrections from the interpretation chip. */
+    sportOverride?: "cricket" | "football" | "none" | null;
+    aliasChoices?: Record<string, string>;
+    intentOverride?: SportsIntent["contentType"] | null;
+  },
 ): Promise<SportsContextResult> {
   const now = opts.now ?? new Date();
-  const intent = parseSportsIntent(opts.text);
+  const choices = opts.aliasChoices ?? {};
+  let intent = parseSportsIntent(opts.text, { now, aliasChoices: choices });
+  if (opts.sportOverride === "none") intent = parseSportsIntent("", { now });
+  else if (opts.sportOverride && intent.sport !== opts.sportOverride) intent = parseSportsIntent(`${opts.text} ${opts.sportOverride} match`, { now, aliasChoices: choices });
+  if (opts.intentOverride && intent.sport) {
+    intent = { ...intent, contentType: opts.intentOverride, timeRef: opts.intentOverride === "historical_highlight" ? "historical" : intent.timeRef === "historical" ? null : intent.timeRef };
+  }
   const publishAt = opts.publishAt ? new Date(opts.publishAt) : null;
 
   let match: MatchRecord | null = null;

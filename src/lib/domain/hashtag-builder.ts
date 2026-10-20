@@ -11,6 +11,8 @@ export const FILLER_HASHTAGS = new Set(
     "explorepage", "explorepage✨", "instagood", "instadaily", "like4like", "likeforlike", "follow4follow", "followforfollow", "followme",
     "reels", "reelsinstagram", "reelitfeelit", "reelkarofeelkaro", "instareels", "youtube", "youtuber", "subscribe", "tiktok", "shortsvideo",
     "viralshorts", "trendingshorts",
+    // Plain generic words that say nothing about this video.
+    "match", "preview", "video", "videos", "caption", "post", "new", "today", "live", "latest", "update", "khelenge", "kal", "aaj",
   ].map((t) => t.toLowerCase()),
 );
 

@@ -126,7 +126,7 @@ function explicitDate(raw: string, now: Date): string | null {
  * sports signal, ambiguous aliases are only resolved by context, and nothing is
  * resolved to a match here.
  */
-export function parseSportsIntent(text: string, opts: { now?: Date } = {}): SportsIntent {
+export function parseSportsIntent(text: string, opts: { now?: Date; aliasChoices?: Record<string, string> } = {}): SportsIntent {
   const now = opts.now ?? new Date();
   const padded = ` ${normalizeName(text)} `;
   const raw = text.toLowerCase();
@@ -167,6 +167,13 @@ export function parseSportsIntent(text: string, opts: { now?: Date } = {}): Spor
     for (const amb of AMBIGUOUS_ALIASES) {
       if (sport && amb.sport !== sport) continue;
       if (!ambiguousPresent(amb.alias)) continue;
+      // The creator already told us which one this alias means.
+      const chosen = opts.aliasChoices?.[amb.alias];
+      if (chosen && amb.candidates.includes(chosen)) {
+        if (amb.kind === "team" && TEAM_BY_ID.has(chosen)) teams = [...teams, TEAM_BY_ID.get(chosen)!];
+        if (amb.kind === "player") players = [...players, ...PLAYERS.filter((p) => p.id === chosen)];
+        continue;
+      }
       const taken = new Set([...teams.map((t) => t.id), ...players.map((p) => p.id)]);
       // A strong alias of a candidate already named elsewhere ("Man U vs United") is not this alias.
       const candidates = amb.candidates.filter((c) => !taken.has(c));

@@ -12,6 +12,7 @@ import { Badge, Button, Notice, Select, cx } from "@/components/ui";
 import { ContextPanel } from "./context-panel";
 import { ConversationList, type ConvSummary } from "./conversation-list";
 import { ResultCard } from "./result-card";
+import { InterpretChip, StartPanel } from "./flow";
 
 type ApiErr = { code: string; message: string; retryable?: boolean; retryAfterSeconds?: number };
 type Live = { tokens: number; preview: string; startedAt: number };
@@ -147,7 +148,18 @@ export function Studio(props: {
     // Optimistic: the creator's message appears immediately.
     setMessages((m) => [
       ...m,
-      { id: tempId, role: "user", text, mode: null, result: null, hashtags: [], contextUsed: null, sports: null, evidence: null, createdAt: new Date().toISOString() },
+      {
+        id: tempId,
+        role: "user",
+        text,
+        mode: null,
+        result: null,
+        hashtags: [],
+        contextUsed: null,
+        sports: null,
+        evidence: null,
+        createdAt: new Date().toISOString(),
+      },
     ]);
     setDraft("");
     setPending(true);
@@ -219,7 +231,12 @@ export function Studio(props: {
         window.history.replaceState(null, "", `/app/caption-studio?c=${result.conversationId}`);
         const line = text.split(/\r?\n/).find((l) => l.trim()) ?? text;
         setConversations((c) => [
-          { id: result.conversationId, title: line.length > 60 ? `${line.slice(0, 57)}…` : line, updatedAt: new Date().toISOString(), isExample: false },
+          {
+            id: result.conversationId,
+            title: line.length > 60 ? `${line.slice(0, 57)}…` : line,
+            updatedAt: new Date().toISOString(),
+            isExample: false,
+          },
           ...c,
         ]);
       } else {
@@ -254,7 +271,7 @@ export function Studio(props: {
     if (e.key !== "Enter") return;
     // Desktop: Enter sends, Shift+Enter is a new line. Touch keyboards: Enter is a new line (Send button sends).
     const touch = window.matchMedia("(pointer: coarse)").matches;
-    if ((e.ctrlKey || e.metaKey) || (!e.shiftKey && !touch)) {
+    if (e.ctrlKey || e.metaKey || (!e.shiftKey && !touch)) {
       e.preventDefault();
       send(draft);
     }
@@ -263,10 +280,7 @@ export function Studio(props: {
   function regenerate() {
     const ctx = { ...context, tone: regenTone };
     setContext(ctx);
-    send(
-      regenTone === context.tone ? s.regenerateMsgSame : s.regenerateMsgTone(d.options.tones[regenTone] ?? regenTone),
-      ctx,
-    );
+    send(regenTone === context.tone ? s.regenerateMsgSame : s.regenerateMsgTone(d.options.tones[regenTone] ?? regenTone), ctx);
   }
 
   return (
@@ -295,7 +309,9 @@ export function Studio(props: {
             aria-label={s.editSettings}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-              <Badge className="shrink-0 whitespace-nowrap" tone="brand">{platform.label}</Badge>
+              <Badge className="shrink-0 whitespace-nowrap" tone="brand">
+                {platform.label}
+              </Badge>
               <Badge className="shrink-0 whitespace-nowrap">{d.options.contentLanguages[context.language] ?? context.language}</Badge>
               <Badge className="shrink-0 whitespace-nowrap">{d.options.tones[context.tone] ?? context.tone}</Badge>
               {context.emoji === "none" && <Badge className="shrink-0 whitespace-nowrap">{s.noEmoji}</Badge>}
@@ -326,6 +342,7 @@ export function Studio(props: {
               <div className="pt-6 text-center">
                 <h1 className="text-2xl font-bold">{s.title}</h1>
                 <p className="mt-1 text-sm text-muted">{s.lead}</p>
+                <StartPanel context={context} onChange={setContext} />
                 <div className="mt-6 grid gap-2 text-left sm:grid-cols-3">
                   {s.starters.map((st) => (
                     <button
@@ -357,21 +374,40 @@ export function Studio(props: {
                   </div>
                 </div>
               ) : m.result ? (
-                <ResultCard
-                  key={m.id}
-                  message={m}
-                  result={m.result}
-                  conversationId={conversationId!}
-                  platformId={context.platform}
-                  outputMode={m.id === lastAssistant?.id ? context.outputMode : "full"}
-                  compact={m.id !== lastAssistant?.id}
-                  onChooseMatch={(matchId, vs) => {
-                    const ctx = { ...context, matchId };
-                    setContext(ctx);
-                    send(d.sports.chooseMsg(vs), ctx);
-                  }}
-                  onRefreshMatch={() => send(d.sports.refreshMsg)}
-                />
+                <div key={m.id} className="space-y-2">
+                  {m.id === lastAssistant?.id && !pending && (
+                    <InterpretChip
+                      sports={m.sports}
+                      context={context}
+                      onCorrect={(patch) => {
+                        const ctx = { ...context, ...patch };
+                        setContext(ctx);
+                        send(d.flow.regenerateMsg, ctx);
+                      }}
+                      onMatch={() => document.getElementById(`sports-${m.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                    />
+                  )}
+                  <ResultCard
+                    key={m.id}
+                    message={m}
+                    result={m.result}
+                    conversationId={conversationId!}
+                    platformId={context.platform}
+                    outputMode={m.id === lastAssistant?.id ? context.outputMode : "full"}
+                    compact={m.id !== lastAssistant?.id}
+                    onChooseMatch={(matchId, vs) => {
+                      const ctx = { ...context, matchId };
+                      setContext(ctx);
+                      send(d.sports.chooseMsg(vs), ctx);
+                    }}
+                    onRefreshMatch={() => send(d.sports.refreshMsg)}
+                    onAnswerQuestion={(alias, id, name) => {
+                      const ctx = { ...context, aliasChoices: { ...context.aliasChoices, [alias]: id }, matchId: null };
+                      setContext(ctx);
+                      send(d.flow.answerMsg(alias, name), ctx);
+                    }}
+                  />
+                </div>
               ) : null,
             )}
 
@@ -409,7 +445,12 @@ export function Studio(props: {
                   {s.toneForNew}
                 </label>
                 <span className="inline-block w-40">
-                  <Select id="regen-tone" value={regenTone} onChange={(e) => setRegenTone(e.target.value as CaptionContext["tone"])} className="h-8 py-0 text-xs">
+                  <Select
+                    id="regen-tone"
+                    value={regenTone}
+                    onChange={(e) => setRegenTone(e.target.value as CaptionContext["tone"])}
+                    className="h-8 py-0 text-xs"
+                  >
                     {TONES.map((tn) => (
                       <option key={tn.id} value={tn.id}>
                         {d.options.tones[tn.id] ?? tn.label}
@@ -547,14 +588,7 @@ function LiveProgress({ live, kind, w }: { live: Live | null; kind: "live" | "lo
     return () => clearInterval(timer);
   }, []);
   const seconds = live ? Math.max(0, Math.round((now - live.startedAt) / 1000)) : 0;
-  const label =
-    kind === "live"
-      ? w.live
-      : kind === "local"
-        ? live?.tokens
-          ? w.localWriting
-          : w.localReading
-        : w.template;
+  const label = kind === "live" ? w.live : kind === "local" ? (live?.tokens ? w.localWriting : w.localReading) : w.template;
   return (
     <div role="status" aria-live="polite" className="rounded-2xl border border-line bg-surface p-4 text-sm">
       <div className="flex items-center justify-between gap-2 text-muted">

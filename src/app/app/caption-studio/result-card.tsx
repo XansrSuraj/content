@@ -30,6 +30,7 @@ export function ResultCard({
   compact = false,
   onChooseMatch,
   onRefreshMatch,
+  onAnswerQuestion,
 }: {
   message: ClientMessage;
   result: CaptionResult;
@@ -40,6 +41,7 @@ export function ResultCard({
   compact?: boolean;
   onChooseMatch?: (matchId: string, vs: string) => void;
   onRefreshMatch?: () => void;
+  onAnswerQuestion?: (alias: string, id: string, name: string) => void;
 }) {
   const sportsRef = useRef<SportsPanelHandle>(null);
   const { d } = useI18n();
@@ -98,13 +100,16 @@ export function ResultCard({
         </div>
 
         {message.sports && (
-          <SportsPanel
-            ref={sportsRef}
-            sports={message.sports}
-            isLatest={!compact}
-            onChooseMatch={(id, vs) => onChooseMatch?.(id, vs)}
-            onRefresh={() => onRefreshMatch?.()}
-          />
+          <div id={`sports-${message.id}`}>
+            <SportsPanel
+              ref={sportsRef}
+              sports={message.sports}
+              isLatest={!compact}
+              onChooseMatch={(id, vs) => onChooseMatch?.(id, vs)}
+              onRefresh={() => onRefreshMatch?.()}
+              onAnswer={(alias, id, name) => onAnswerQuestion?.(alias, id, name)}
+            />
+          </div>
         )}
 
         {(result.assumptions.length > 0 || result.clarifyingQuestion) && outputMode === "full" && (
