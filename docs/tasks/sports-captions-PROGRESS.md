@@ -338,3 +338,19 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - **Labels everywhere:** "creator-provided — not verified" / "<tool> (admin-observed)"; never "live".
 - **Never used:** cookie scrapers, private endpoints, scraping mirrors or trial-only services.
 - **Tests:** 213 unit tests passing.
+
+## Final — eval, deploy, live verification (2026-10-21)
+- **Fixes from eval run 3:**
+  - A community or schedule-only result (OpenLigaDB/openfootball) now goes to the model as "MATCH RESULT NOT VERIFIED — do not state score or winner". Only a live-status provider's result is a fact.
+  - The validator's question exemption is narrowed to who/which questions with no score and no "won/haraya". "2-1 se haraya, kya match tha?" is now a result claim.
+  - New `duplicate_option` check (it is repairable).
+  - When the subject is unclear, the model is told to still fill every platform with all three options.
+- **Tests:** 221 unit passing; E2E 12 passed / 1 skipped (template server on :3300 with demo flags). Lint, typecheck, build and bundle check are clean.
+- **Deploy:** `09a147b` is live on Render (deploy `dep-dbbstnrl9sls73ffa6a0`); `/api/health` reports ok, postgres, `openai/gpt-oss-20b`, and all sources fresh.
+- **Live check (real Groq, real data, throwaway account deleted afterwards):**
+  - Input: "Bayern Munich ke next match ka preview video…".
+  - The result came back in 5.0 s and resolved to **FC Bayern München vs FC Arsenal, UEFA Champions League, upcoming, starts 22 Oct 2026 00:30 IST**.
+  - Source shown: OpenLigaDB, "fixture list only — no live status".
+  - The caption used only that date and those teams.
+  - Hashtags: #BAYvsARS #BayernMunich #Arsenal #MatchPreview #Football (5 of max 30).
+  - Trend note: "No relevant current trend found".
