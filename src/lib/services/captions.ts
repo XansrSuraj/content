@@ -14,7 +14,7 @@ import {
 import { classifyHashtags, type HashtagStatus } from "@/lib/domain/hashtags";
 import { getCaptionProvider, ProviderError, type CaptionProvider, type CaptionTurn } from "@/lib/providers/ai";
 import { getProfile, recordEvent, recordUsage } from "@/lib/repo/creator";
-import { evidenceFor, getOpportunity, hashtagEvidence } from "@/lib/repo/discovery";
+import { evidenceFor, getOpportunity, hashtagEvidence, searchInterestByTerm } from "@/lib/repo/discovery";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 import {
   addMessage,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/repo/studio";
 import { checkAiQuota } from "@/lib/security/rate-limit";
 import { findTrendContext, trendContextNotes } from "./trend-context";
+import { buildSportsContext } from "./sports-context";
 
 export const CaptionTurnSchema = z.object({
   conversationId: z.string().max(64).nullable().default(null),
@@ -125,12 +126,22 @@ export async function runCaptionTurn(
   }
 
   const opportunityId = conversation?.opportunityId ?? input.opportunityId ?? null;
+  const conversationText = `${originalInput}
+${input.message}`;
+  // Match facts, stage and references first: their team names also sharpen the search-trend match.
+  const sports = await buildSportsContext(db, user.id, {
+    text: conversationText,
+    matchId: context.matchId,
+    publishAt: context.publishAt,
+    timeZone: profile?.sports?.timezone || "Asia/Kolkata",
+  });
   const trendItems = context.useTrends
-    ? await findTrendContext(db, `${originalInput}
-${input.message}`, { includeDemo: user.isDemo && cfg.demoEnabled })
+    ? await findTrendContext(db, `${conversationText}
+${sports.trendTerms}`, { includeDemo: user.isDemo && cfg.demoEnabled })
     : [];
   const evidenceNotes = [
     ...(opportunityId ? await opportunityNotes(db, user, opportunityId) : []),
+    ...sports.notes,
     ...trendContextNotes(trendItems),
   ];
 
@@ -190,6 +201,7 @@ ${input.message}`, { includeDemo: user.isDemo && cfg.demoEnabled })
     result,
     mode: output.mode,
     contextUsed: trendItems,
+    sports: sports.used,
   }))!;
 
   await recordUsage(db, {
@@ -248,9 +260,9 @@ export async function hashtagStatusesFor(
   result: CaptionResult,
   platform: string,
 ): Promise<HashtagStatus[]> {
-  const tags = [...result.hashtagSuggestions.map((h) => h.tag), ...result.variants.flatMap((v) => v.hashtags)];
-  const evidence = await hashtagEvidence(db, tags, user.isDemo);
-  return classifyHashtags(tags, evidence, platform);
+  const tags = [...result.hashtagSuggestions.map((h) => h.tag), ...result.variants.flatMap((v) => v.hashtags), ...result.platformVersions.flatMap((p) => p.hashtags)];
+  const [evidence, search] = await Promise.all([hashtagEvidence(db, tags, user.isDemo), searchInterestByTerm(db)]);
+  return classifyHashtags(tags, evidence, platform, new Date(), search);
 }
 
 /** Same as hashtagStatusesFor, for many results at once: one evidence query for the whole conversation. */
@@ -260,8 +272,8 @@ export async function hashtagStatusesForMany(
   results: (CaptionResult | null)[],
   platform: string,
 ): Promise<HashtagStatus[][]> {
-  const tagsOf = (r: CaptionResult) => [...r.hashtagSuggestions.map((h) => h.tag), ...r.variants.flatMap((v) => v.hashtags)];
+  const tagsOf = (r: CaptionResult) => [...r.hashtagSuggestions.map((h) => h.tag), ...r.variants.flatMap((v) => v.hashtags), ...r.platformVersions.flatMap((p) => p.hashtags)];
   const all = results.flatMap((r) => (r ? tagsOf(r) : []));
-  const evidence = all.length ? await hashtagEvidence(db, all, user.isDemo) : new Map();
-  return results.map((r) => (r ? classifyHashtags(tagsOf(r), evidence, platform) : []));
+  const [evidence, search] = all.length ? await Promise.all([hashtagEvidence(db, all, user.isDemo), searchInterestByTerm(db)]) : [new Map(), new Map()];
+  return results.map((r) => (r ? classifyHashtags(tagsOf(r), evidence, platform, new Date(), search) : []));
 }

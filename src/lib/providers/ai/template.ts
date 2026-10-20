@@ -137,6 +137,13 @@ export class TemplateCaptionProvider implements CaptionProvider {
       recommendationReason: "Template A gives the clearest structure to fill in. This is a layout suggestion, not an AI judgment.",
       hooks: [opener, question],
       hashtagSuggestions: tags.map((tag) => ({ tag, reason: "Keyword taken from your own text" })),
+      // Same layout per extra platform, trimmed to that platform's hashtag limit (no rewriting without AI).
+      platformVersions: c.extraPlatforms
+        .filter((p) => p !== c.platform)
+        .map((p) => {
+          const limit = getPlatform(p).hashtagRule.hardLimit;
+          return { platform: p, caption: variants[0].caption, hashtags: limit === null ? tags : tags.slice(0, limit) };
+        }),
       keywords: keywords.slice(0, 4),
       improvements: ["Adds a structure: hook, one concrete detail, and a goal-matched call to action."],
       limitations: [

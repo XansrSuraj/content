@@ -2,12 +2,12 @@ import type { HashtagStatus } from "@/lib/domain/hashtags";
 import type { CaptionResult, GenerationMode } from "@/lib/domain/captions";
 import { CaptionResultSchema } from "@/lib/domain/captions";
 import type { Message } from "@/lib/repo/studio";
-import type { TrendContextItem } from "@/lib/db/schema";
+import type { SportsContextUsed, TrendContextItem } from "@/lib/db/schema";
 
 /** Plain JSON shapes sent to the client (dates as ISO strings). */
 export interface ClientHashtagStatus {
   tag: string;
-  status: "suggested" | "verified" | "demo";
+  status: "suggested" | "verified" | "search_interest" | "demo";
   evidence: {
     sourceName: string;
     platform: string;
@@ -28,6 +28,8 @@ export interface ClientMessage {
   hashtags: ClientHashtagStatus[];
   /** null = message predates trend context; [] = looked, nothing matched. */
   contextUsed: TrendContextItem[] | null;
+  /** Match facts, intent and references used for this answer; null when none applied. */
+  sports: SportsContextUsed | null;
   createdAt: string;
 }
 
@@ -60,6 +62,7 @@ export function toClientMessage(m: Message, hashtags: HashtagStatus[] = []): Cli
     result: parsed?.success ? parsed.data : null,
     hashtags: toClientHashtags(hashtags),
     contextUsed: m.contextUsed ?? null,
+    sports: m.sports ?? null,
     createdAt: m.createdAt.toISOString(),
   };
 }

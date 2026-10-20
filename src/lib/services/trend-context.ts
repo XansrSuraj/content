@@ -54,6 +54,14 @@ export function metricText(name: string | null, value: number | null): string | 
 }
 
 /** Pure matcher: a title matches when it shares a meaningful word (>= 4 letters) or appears whole in the text. */
+const GENERIC_CONTEXT_WORDS = new Set(
+  (
+    "match matches india indian bharat team teams cricket football sport sports game games player players series final finals league cup world " +
+    "preview review reaction highlights video videos reel reels short shorts live today news update latest season film films movie movies song songs " +
+    "list best official full episode part 2025 2026 2027 vs versus"
+  ).split(" "),
+);
+
 export function matchTrends(text: string, candidates: CandidateObservation[], limit = 3): TrendContextItem[] {
   const textTokens = new Set(tokens(text));
   const lowered = text.toLowerCase();
@@ -63,9 +71,12 @@ export function matchTrends(text: string, candidates: CandidateObservation[], li
     const key = c.title.toLowerCase();
     if (seen.has(key)) continue;
     const titleTokens = tokens(c.title).filter((t) => t.length >= 4);
-    const matched = titleTokens.filter((t) => textTokens.has(t));
+    // Generic words ("match", "india", "games"…) never link a trend on their own, and at
+    // least half of a title's specific words must appear — "Match cut" is not about a cricket match.
+    const specific = titleTokens.filter((t) => !GENERIC_CONTEXT_WORDS.has(t));
+    const matched = specific.filter((t) => textTokens.has(t));
     const whole = key.length >= 4 && lowered.includes(key);
-    if (!matched.length && !whole) continue;
+    if (!whole && (matched.length === 0 || matched.length / specific.length < 0.5)) continue;
     seen.add(key);
     scored.push({
       score: (whole ? 3 : 0) + matched.length / Math.max(1, titleTokens.length),

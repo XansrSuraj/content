@@ -7,8 +7,9 @@ import { INGESTIBLE_KEYS } from "@/lib/jobs/ingest";
 import { listAllOpportunitiesForAdmin, listObservations, listRuns } from "@/lib/repo/discovery";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 import { providerStatus } from "@/lib/services/status";
-import { cleanupDemoAction, runSourceNow, setStatusAction } from "@/app/actions/admin";
-import { Badge, Button, Card, LinkButton, Notice, PageHeader, daysAgo, formatDateTime } from "@/components/ui";
+import { addToolObservation, cleanupDemoAction, deleteToolObservation, importTrendsCsv, runSourceNow, setStatusAction } from "@/app/actions/admin";
+import { countMatches, listSharedReferences } from "@/lib/repo/sports";
+import { Badge, Button, Card, Input, LinkButton, Notice, PageHeader, Select, Textarea, daysAgo, formatDateTime } from "@/components/ui";
 
 export const metadata = { title: "Admin" };
 
@@ -17,7 +18,7 @@ export default async function AdminPage(props: PageProps<"/admin">) {
   const sp = await props.searchParams;
   const db = await getDb();
   const since = daysAgo(7);
-  const [status, runs, observations, opps, usage] = await Promise.all([
+  const [status, runs, observations, opps, usage, references, matchCount] = await Promise.all([
     providerStatus(db),
     listRuns(db, 15),
     listObservations(db, { limit: 60 }),
@@ -35,6 +36,8 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .where(gte(usageRecords.createdAt, since))
       .groupBy(sql`1`, usageRecords.kind, usageRecords.status)
       .orderBy(sql`1 desc`),
+    listSharedReferences(db),
+    countMatches(db),
   ]);
 
   return (
@@ -153,6 +156,75 @@ export default async function AdminPage(props: PageProps<"/admin">) {
               ))}
             </tbody>
           </table>
+        )}
+      </Card>
+
+      <Card className="p-4" id="references">
+        <h2 className="font-semibold">Platform evidence (manual)</h2>
+        <p className="mt-1 text-xs text-muted">
+          For platforms without a permitted feed: record what you saw in the platform&apos;s own tool (TikTok Creative Center, Reddit Pro Trends, YouTube
+          Studio Trends, Instagram Reels trends), or import a Google Trends &ldquo;related queries&rdquo; CSV (YouTube Search filter). Entries are shared with all
+          creators, labelled with the tool and time, and expire after 14 days. A #hashtag entry counts as platform evidence for that platform for 72 hours.
+          Shared fixtures in the database: {matchCount}.
+        </p>
+        {sp.ref && <Notice tone={sp.ref === "added" || sp.ref === "imported" ? "ok" : "warn"} className="mt-2">Evidence: {String(sp.ref)}{sp.n ? ` · ${sp.n} rows` : ""}</Notice>}
+        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+          <form action={addToolObservation} className="space-y-2 rounded-lg border border-line p-3 text-sm">
+            <p className="font-semibold">Add a tool observation</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Select name="platform" aria-label="Platform" defaultValue="tiktok">
+                <option value="tiktok">TikTok</option>
+                <option value="instagram">Instagram</option>
+                <option value="youtube">YouTube</option>
+                <option value="reddit">Reddit</option>
+                <option value="facebook">Facebook</option>
+                <option value="google_search">Google Search</option>
+              </Select>
+              <Select name="sourceTool" aria-label="Tool" defaultValue="TikTok Creative Center">
+                {["TikTok Creative Center", "Reddit Pro Trends", "YouTube Studio Trends", "Instagram Reels trends", "Google Trends (YouTube Search)", "Other"].map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </Select>
+            </div>
+            <Input name="topic" required maxLength={120} placeholder="Topic or #hashtag exactly as shown" aria-label="Topic" />
+            <div className="grid grid-cols-2 gap-2">
+              <Input name="region" defaultValue="IN" maxLength={20} aria-label="Region" />
+              <Input name="observedAt" type="datetime-local" aria-label="Observed at (IST)" />
+            </div>
+            <Input name="url" type="url" maxLength={500} placeholder="Link to the tool page (optional)" aria-label="Link" />
+            <Textarea name="note" maxLength={300} placeholder="What you saw, e.g. rank / trendline (optional)" aria-label="Note" className="min-h-14" />
+            <Button type="submit" size="sm">Add observation</Button>
+          </form>
+          <form action={importTrendsCsv} className="space-y-2 rounded-lg border border-line p-3 text-sm">
+            <p className="font-semibold">Import Google Trends CSV</p>
+            <p className="text-xs text-muted">Explore → region India → topic → search type &ldquo;YouTube Search&rdquo; → Related queries → download CSV.</p>
+            <input name="file" type="file" accept=".csv,text/csv" required aria-label="CSV file" className="block text-xs" />
+            <div className="grid grid-cols-2 gap-2">
+              <Select name="platform" aria-label="Search type" defaultValue="youtube">
+                <option value="youtube">YouTube Search</option>
+                <option value="google_search">Web Search</option>
+              </Select>
+              <Input name="region" defaultValue="IN" maxLength={20} aria-label="Region" />
+            </div>
+            <Button type="submit" size="sm" variant="secondary">Import</Button>
+          </form>
+        </div>
+        {references.length > 0 && (
+          <ul className="mt-3 divide-y divide-line text-xs">
+            {references.slice(0, 40).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 py-1.5">
+                <Badge>{r.sourceTool}</Badge>
+                <span className="font-semibold">{r.topic}</span>
+                <span className="text-muted">
+                  {r.platform} · {r.region} · {formatDateTime(r.observedAt)}
+                  {r.note ? ` · ${r.note}` : ""}
+                </span>
+                <form action={deleteToolObservation.bind(null, r.id)} className="ml-auto">
+                  <Button type="submit" size="sm" variant="ghost" className="text-danger">Delete</Button>
+                </form>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
 

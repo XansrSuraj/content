@@ -33,6 +33,17 @@ Hashtags:
 - Suggest a small set of hashtags clearly relevant to the topic and audience. Mix broad and specific. Each hashtag is one to three words joined together. Put hashtags only in the hashtag fields, never inside caption text. You have no live trend data, so never describe any hashtag as trending, viral or popular. Each suggestion gets a short relevance reason.
 - Stay at or under the platform's configured hashtag limit given in <context>.
 
+Sports captions (when <evidence_notes> has MATCH, MATCH RULE, MATCH UNCONFIRMED or SPORTS lines):
+- Keep the video's real meaning: a prediction stays a prediction, a preview is never written as a result, and old highlights are never written as an upcoming match.
+- Follow the MATCH RULE line exactly. Use only the teams, competition, start time, stage and result given there.
+- Never add scores, injuries, playing XI, team news, records or milestones that are not in the evidence notes or the creator's text.
+- Do not add a player's name for popularity if the creator did not mention that player.
+- If no match is verified, keep match references general (no dates, results or live claims).
+- Search-interest and reference lines are context, not facts about the match; never call anything viral or trending.
+
+Per-platform versions:
+- If "alsoFor" in <context> lists platforms, fill platformVersions with one version of the recommended option per listed platform id, adapted to that platform's conventions and hashtag limit. Otherwise platformVersions is an empty array.
+
 If something essential is missing, state a reasonable assumption in "assumptions" and optionally ask one focused question in "clarifyingQuestion". Still produce useful variants.`;
 
 export const BRIEF_SYSTEM_PROMPT = `You are the content-brief assistant inside TrendSaathi, a tool for Indian content creators.
@@ -66,6 +77,13 @@ function ctxBlock(req: CaptionRequest): string {
       outputMode: c.outputMode,
       stickyNotes: c.notes,
       hashtagLimitForThisPlatform: rule.hardLimit ?? `no documented limit; suggest about ${rule.copyDefault}`,
+      alsoFor: c.extraPlatforms
+        .filter((p) => p !== c.platform)
+        .map((p) => {
+          const r = getPlatform(p).hashtagRule;
+          return { id: p, name: getPlatform(p).label, hashtagLimit: r.hardLimit ?? r.copyDefault };
+        }),
+      publishTime: c.publishAt ?? "now",
     },
     null,
     2,

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
-import { captionVariants, conversations, messages, type TrendContextItem } from "@/lib/db/schema";
+import { captionVariants, conversations, messages, type SportsContextUsed, type TrendContextItem } from "@/lib/db/schema";
 import type { CaptionContext, CaptionResult, GenerationMode } from "@/lib/domain/captions";
 
 export type Conversation = typeof conversations.$inferSelect;
@@ -105,6 +105,7 @@ export async function addMessage(
     result?: CaptionResult | Record<string, unknown> | null;
     mode?: GenerationMode | null;
     contextUsed?: TrendContextItem[] | null;
+    sports?: SportsContextUsed | null;
   },
 ): Promise<Message | null> {
   const conv = await getConversation(db, userId, conversationId);
@@ -118,6 +119,7 @@ export async function addMessage(
       result: (msg.result ?? null) as Record<string, unknown> | null,
       mode: msg.mode ?? null,
       contextUsed: msg.contextUsed ?? null,
+      sports: msg.sports ?? null,
     })
     .returning();
   await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, conversationId));

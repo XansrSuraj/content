@@ -152,7 +152,40 @@ Keep this file current so work can resume across sessions.
 - **Trending page:** India searches and reading (main), songs and podcasts (sidebar), and "Worldwide social chatter" (Bluesky + Mastodon) at the bottom.
 - **Tests:** 111 unit (new `tests/social.test.ts`), 9/9 E2E.
 
+## Session 10 (2026-10-20): sports-aware captions (match identification → timing → relevant caption)
+- **Domain** (`src/lib/domain/sports/`), pure and tested:
+  - `entities.ts`: teams and players with English, Hindi and abbreviation aliases mapped to one id. Aliases marked `~` are weak: everyday words such as "virat", "hardik", "pant", "milan", and country/city names. They only count with a sports signal.
+  - `intent.ts`: sport, teams, players, gender, content type (preview/prediction/reaction/analysis/highlights), time reference. "Kal" is resolved by verb tense, otherwise flagged ambiguous.
+  - `resolve.ts`: `resolveMatch` filters by sport, gender and both teams, then by the creator's calendar day (timezone-aware) or by content direction. It returns single, ambiguous (ask the creator) or none, and never guesses.
+  - `matchStage`: a match is never "live" from the clock alone; that needs a provider status under 20 minutes old.
+  - `STAGE_GUIDANCE`: per-stage writing rules.
+- **Data:** migration `0002_sports` adds `sports_matches` (shared provider fixtures plus private creator-entered ones), `platform_references` (creator references and admin tool observations/CSV imports, 14-day expiry), `creator_profiles.sports` (sports, favourite teams, timezone) and `messages.sports` (what was used).
+- **Fixtures providers** (`src/lib/providers/sports/connectors.ts`, `src/lib/jobs/sports-ingest.ts`), each fetched once per match and shared, with a per-provider interval and daily call cap:
+  - **openfootball** (keyless, CC0): Premier League, LaLiga, Bundesliga, Serie A and Ligue 1 schedules plus volunteer-updated results. It is schedule-only, so started matches without a result show as "status unknown". Every current Premier League club is mapped; in the other leagues only the big clubs are.
+  - **football-data.org** (`FOOTBALL_DATA_TOKEN`) and **CricAPI** (`CRICAPI_KEY`) switch on automatically when a free key is set. Their mappings are unit-tested against documented shapes but have not been called live (no keys).
+  - No keyless official cricket source exists: Cricsheet blocks automated downloads, and the alternatives are scrapers or ESPN's undocumented API. Cricket needs CricAPI or creator-entered matches.
+- **Caption flow** (`services/sports-context.ts`): intent → bounded fixture refresh → resolve.
+  - The model receives an evidence bundle: a MATCH line (source, checked time, IST start, verified stage), the result if confirmed, the MATCH RULE, a PUBLISH TIME note, "MATCH UNCONFIRMED" or "NO VERIFIED FIXTURE", and matching references.
+  - New system-prompt sports rules: no invented scores, injuries, playing XI or records; a prediction is never turned into a result; no unmentioned players.
+  - Team names also sharpen the search-trend match. The trend matcher now ignores generic words ("match", "india", "games") and needs at least half of a title's specific words.
+- **Multi-platform:** the "Also create for" setting (up to 2) makes the same request return `platformVersions`, enforced per platform hashtag limit. The template copies option A; the local model returns none.
+- **Hashtag labels:**
+  - Platform trend = existing verified evidence, plus admin #tag observations from a platform tool for that platform, for 72 hours.
+  - Search interest rising = the tag's letters equal a Google search trend from the last 48 hours.
+  - Relevant suggestion = everything else.
+- **UI:**
+  - Profile: sports, favourite teams and timezone.
+  - Studio settings: publish time (now/schedule), "Also create for", and a references box (labelled "your reference — not verified").
+  - Result card:
+    - Match context panel: stage badge, start time in the creator's timezone, source and checked time, and a "schedule only" or "entered by you" label.
+    - "Which match?" picker; "Not listed? Add match details" form, which saves and regenerates with that match.
+    - Freshness check: on copy, on window focus, and when the card loads, it re-reads the match stage and shows "Match context changed → Refresh caption".
+  - Admin: "Platform evidence (manual)" form (TikTok Creative Center, Reddit Pro Trends, YouTube Studio Trends, Instagram Reels trends) and a Google Trends "related queries" CSV import (YouTube Search filter).
+- **Not built:** Cloudflare Workers/D1. The existing `after()` refresh plus the shared Postgres already gives "fetch per match, generate per creator" at ₹0, and there's no extra account to manage.
+- **Tests:** 136 unit (new `sports.test.ts` and `sports-pipeline.test.ts`), 10/10 E2E (new `e2e/sports.spec.ts`). A real openfootball fixture (Arsenal vs Everton) attaches automatically as "Upcoming · 24 Oct 7:30 pm IST".
+
 ## Next steps
+- Optional free keys for live status: `CRICAPI_KEY` (cricketdata.org) and `FOOTBALL_DATA_TOKEN` (football-data.org).
 - Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.
 - Set `ADMIN_EMAILS` on Render to the owner's email.
 - Optional: make the GitHub repo private; add GitHub Actions secrets for background trend refresh.

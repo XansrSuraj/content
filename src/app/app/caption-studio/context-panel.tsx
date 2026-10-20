@@ -5,7 +5,15 @@ import type { CaptionContext } from "@/lib/domain/captions";
 import { GOALS, LANGUAGES, LENGTHS, REGIONS, TONES } from "@/lib/domain/options";
 import { PLATFORMS, getPlatform } from "@/lib/domain/platforms";
 import { useI18n } from "@/components/i18n-provider";
+import { ReferencesBox } from "./references-box";
 import { Badge, Field, Input, Select } from "@/components/ui";
+
+/** ISO → value for a datetime-local input, in the browser's timezone. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function ContextPanel({
   context,
@@ -151,6 +159,63 @@ export function ContextPanel({
           <span className="block text-xs text-muted">{t.useTrendsHint}</span>
         </span>
       </label>
+
+      <fieldset>
+        <legend className="text-sm font-semibold">{d.sports.publish}</legend>
+        <div className="mt-1 flex gap-3 text-sm">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="ctx-publish" checked={!context.publishAt} onChange={() => set("publishAt", null)} />
+            {d.sports.publishNow}
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="ctx-publish"
+              checked={Boolean(context.publishAt)}
+              onChange={() => set("publishAt", new Date(Date.now() + 3_600_000).toISOString())}
+            />
+            {d.sports.publishLater}
+          </label>
+        </div>
+        {context.publishAt && (
+          <Input
+            type="datetime-local"
+            aria-label={d.sports.publish}
+            className="mt-2"
+            value={toLocalInput(context.publishAt)}
+            onChange={(e) => {
+              const v = new Date(e.target.value);
+              if (!Number.isNaN(v.getTime())) set("publishAt", v.toISOString());
+            }}
+          />
+        )}
+        <p className="mt-1 text-xs text-muted">{d.sports.publishHint}</p>
+      </fieldset>
+
+      <fieldset>
+        <legend className="text-sm font-semibold">{d.sports.alsoFor}</legend>
+        <p className="text-xs text-muted">{d.sports.alsoForHint}</p>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+          {PLATFORMS.filter((p) => p.id !== context.platform).map((p) => {
+            const on = context.extraPlatforms.includes(p.id);
+            return (
+              <label key={p.id} className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={!on && context.extraPlatforms.length >= 2}
+                  onChange={(e) =>
+                    set("extraPlatforms", e.target.checked ? [...context.extraPlatforms, p.id] : context.extraPlatforms.filter((x) => x !== p.id))
+                  }
+                />
+                {p.label}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <ReferencesBox />
 
       <Field label={t.output} htmlFor="ctx-output">
         <Select id="ctx-output" value={context.outputMode} onChange={(e) => set("outputMode", e.target.value as CaptionContext["outputMode"])}>

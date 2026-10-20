@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, ilike, inArray, or, sql, type AnyColumn } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNull, or, sql, type AnyColumn } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
-import { ingestionRuns, opportunities, opportunityEvidence, sourceObservations, sources } from "@/lib/db/schema";
+import { ingestionRuns, opportunities, opportunityEvidence, platformReferences, sourceObservations, sources } from "@/lib/db/schema";
 import type { HashtagEvidence } from "@/lib/domain/hashtags";
-import { VERIFIED_MAX_AGE_HOURS } from "@/lib/domain/hashtags";
+import { SEARCH_INTEREST_MAX_AGE_HOURS, VERIFIED_MAX_AGE_HOURS, compactTerm } from "@/lib/domain/hashtags";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 
 export type Opportunity = typeof opportunities.$inferSelect;
@@ -75,6 +75,57 @@ export async function relatedObservations(db: DB, obs: Observation[]): Promise<O
 }
 
 /** Looks up hashtag evidence from stored observations (lower-cased tag → evidence). */
+/** Current Google search trends keyed by compactTerm(title), for the "search interest" hashtag label. */
+export async function searchInterestByTerm(db: DB, now = new Date()): Promise<Map<string, HashtagEvidence[]>> {
+  const rows = await db
+    .select()
+    .from(sourceObservations)
+    .where(
+      and(
+        eq(sourceObservations.sourceKey, "google_trends_rss_in"),
+        eq(sourceObservations.isDemo, false),
+        gte(sourceObservations.observedAt, new Date(now.getTime() - SEARCH_INTEREST_MAX_AGE_HOURS * 3_600_000)),
+      ),
+    )
+    .limit(300);
+  const map = new Map<string, HashtagEvidence[]>();
+  for (const o of rows) {
+    const k = compactTerm(o.title);
+    if (k.length < 3) continue;
+    map.set(k, [
+      ...(map.get(k) ?? []),
+      { sourceKey: o.sourceKey, sourceName: SOURCE_NAMES[o.sourceKey] ?? o.sourceKey, platform: o.platform, geo: o.geo, observedAt: o.observedAt, retrievedAt: o.retrievedAt, coverageNote: o.coverageNote, url: o.url, isDemo: false },
+    ]);
+  }
+  return map;
+}
+
+/** Admin-entered platform tool observations of a #tag count as platform evidence for that platform only. */
+async function referenceHashtagEvidence(db: DB, lower: string[]): Promise<{ tag: string; ev: HashtagEvidence }[]> {
+  const since = new Date(Date.now() - VERIFIED_MAX_AGE_HOURS * 3_600_000);
+  const rows = await db
+    .select()
+    .from(platformReferences)
+    .where(and(isNull(platformReferences.userId), inArray(platformReferences.evidenceType, ["tool_observation", "csv_import"]), gte(platformReferences.observedAt, since)))
+    .limit(300);
+  return rows
+    .filter((r) => r.topic.startsWith("#") && lower.includes(r.topic.toLowerCase()))
+    .map((r) => ({
+      tag: r.topic.toLowerCase(),
+      ev: {
+        sourceKey: `reference:${r.sourceTool}`,
+        sourceName: `${r.sourceTool} (seen by an admin)`,
+        platform: r.platform,
+        geo: r.region,
+        observedAt: r.observedAt,
+        retrievedAt: r.createdAt,
+        coverageNote: r.note || `Observed by an admin in ${r.sourceTool} for ${r.region}. Not an automated feed.`,
+        url: r.url,
+        isDemo: false,
+      },
+    }));
+}
+
 export async function hashtagEvidence(db: DB, tags: string[], includeDemo: boolean): Promise<Map<string, HashtagEvidence[]>> {
   const map = new Map<string, HashtagEvidence[]>();
   // Only normalized hashtags (letters, marks, digits, underscore) can reach the raw array below.
@@ -114,6 +165,7 @@ export async function hashtagEvidence(db: DB, tags: string[], includeDemo: boole
       ]);
     }
   }
+  for (const { tag, ev } of await referenceHashtagEvidence(db, lower)) map.set(tag, [...(map.get(tag) ?? []), ev]);
   return map;
 }
 

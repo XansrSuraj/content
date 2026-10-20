@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PLATFORM_IDS } from "./platforms";
+import { PLATFORM_IDS, getPlatform } from "./platforms";
 import { GOAL_IDS, LANGUAGE_IDS, LENGTH_IDS, REGION_IDS, TONE_IDS } from "./options";
 import { normalizeHashtag } from "./hashtags";
 
@@ -22,6 +22,12 @@ export const CaptionContextSchema = z.object({
   notes: z.array(z.string().max(120)).max(8).default([]),
   /** Give matching current search-interest observations to the model as context. */
   useTrends: z.boolean().default(true),
+  /** The fixture the creator confirmed this caption is about (overrides automatic matching). */
+  matchId: z.string().max(64).nullable().default(null),
+  /** When the creator will post (ISO); null = now. Changes how match timing is written. */
+  publishAt: z.string().datetime({ offset: true }).nullable().default(null),
+  /** Extra platforms to adapt the recommended option for, in the same request. */
+  extraPlatforms: z.array(z.enum(PLATFORM_IDS)).max(2).default([]),
 });
 export type CaptionContext = z.infer<typeof CaptionContextSchema>;
 
@@ -61,6 +67,15 @@ export const CaptionModelOutputSchema = z.object({
   keywords: z.array(z.string()).describe("Natural search phrases a viewer might type. Empty if not useful."),
   improvements: z.array(z.string()).describe("Concise list of what was improved and why."),
   limitations: z.array(z.string()).describe("Important caveats, e.g. facts that need checking. Empty if none."),
+  platformVersions: z
+    .array(
+      z.object({
+        platform: z.string().describe("Platform id from alsoFor in <context>."),
+        caption: z.string().describe("The recommended option adapted for this platform: its length, style and conventions."),
+        hashtags: z.array(z.string()).describe("Hashtags for this platform, within its limit."),
+      }),
+    )
+    .describe("One adaptation per platform listed in alsoFor in <context>. Empty array if alsoFor is empty."),
 });
 export type CaptionModelOutput = z.infer<typeof CaptionModelOutputSchema>;
 
@@ -92,6 +107,11 @@ export const CaptionResultSchema = z.object({
   keywords: z.array(z.string().max(80)).max(10),
   improvements: z.array(z.string().max(300)).max(8),
   limitations: z.array(z.string().max(300)).max(6),
+  /** Older stored results have none. */
+  platformVersions: z
+    .array(z.object({ platform: z.string().max(40), caption: z.string().min(1).max(2200), hashtags: z.array(tagSchema).max(12) }))
+    .max(3)
+    .default([]),
 });
 export type CaptionResult = z.infer<typeof CaptionResultSchema>;
 
@@ -269,9 +289,19 @@ export function enforceConstraints(result: CaptionResult, ctx: CaptionContext): 
       );
     }
   }
+  // Only platforms the creator asked for, once each, with their own hashtag limit.
+  const seen = new Set<string>();
+  const platformVersions = result.platformVersions
+    .filter((p) => ctx.extraPlatforms.includes(p.platform as CaptionContext["platform"]) && p.platform !== ctx.platform && !seen.has(p.platform) && seen.add(p.platform))
+    .map((p) => {
+      const limit = getPlatform(p.platform).hashtagRule.hardLimit;
+      const caption = removeEngagementBait(stripTrailingHashtags(p.caption)).text;
+      return { ...p, caption: ctx.emoji === "none" ? stripEmoji(caption) : caption, hashtags: limit === null ? p.hashtags : p.hashtags.slice(0, limit) };
+    });
   return {
     ...result,
     variants,
+    platformVersions,
     hooks: ctx.emoji === "none" ? result.hooks.map(stripEmoji) : result.hooks,
     limitations: limitations.slice(0, 6),
   };

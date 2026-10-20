@@ -15,6 +15,13 @@
       "when": 1792503312632,
       "tag": "0001_trend_context",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792516956565,
+      "tag": "0002_sports",
+      "breakpoints": true
     }
   ]
 }

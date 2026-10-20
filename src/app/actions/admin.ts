@@ -15,6 +15,8 @@ import { evidenceConfidence } from "@/lib/domain/opportunities";
 import { buildConnector, runIngestion } from "@/lib/jobs/ingest";
 import { createOpportunityFromObservations, setOpportunityStatus } from "@/lib/repo/discovery";
 import { cleanupOldDemoUsers } from "@/lib/demo/seed";
+import { addReferences, deleteSharedReference } from "@/lib/repo/sports";
+import { parseTrendsCsv } from "@/lib/domain/trends-csv";
 
 export async function runSourceNow(sourceKey: string): Promise<void> {
   await requireAdmin();
@@ -119,4 +121,76 @@ export async function cleanupDemoAction(): Promise<void> {
   const db = await getDb();
   const n = await cleanupOldDemoUsers(db);
   redirect(`/admin?demoCleaned=${n}`);
+}
+
+// ---------- Manual platform evidence (what an admin saw in a platform's own tool) ----------
+
+const SOURCE_TOOLS = ["TikTok Creative Center", "Reddit Pro Trends", "YouTube Studio Trends", "Instagram Reels trends", "Google Trends (YouTube Search)", "Other"] as const;
+
+const ToolObservation = z.object({
+  platform: z.enum(["instagram", "youtube", "tiktok", "facebook", "reddit", "google_search"]),
+  sourceTool: z.enum(SOURCE_TOOLS),
+  topic: z.string().trim().min(2).max(120),
+  region: z.string().trim().max(20).default("IN"),
+  url: z.union([z.literal(""), z.string().url().max(500)]).default(""),
+  observedAt: z.string().max(30).default(""),
+  note: z.string().trim().max(300).default(""),
+});
+
+/** Shared evidence: an admin records a trend they saw in a platform tool, with link and time. */
+export async function addToolObservation(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const p = ToolObservation.safeParse(Object.fromEntries(formData));
+  if (!p.success) redirect("/admin?ref=invalid#references");
+  const observedAt = p.data.observedAt ? new Date(`${p.data.observedAt}:00+05:30`) : new Date();
+  const db = await getDb();
+  await addReferences(db, null, [
+    {
+      platform: p.data.platform,
+      topic: p.data.topic,
+      region: p.data.region || "IN",
+      url: p.data.url || null,
+      observedAt: Number.isNaN(observedAt.getTime()) ? new Date() : observedAt,
+      evidenceType: "tool_observation",
+      sourceTool: p.data.sourceTool,
+      note: p.data.note,
+    },
+  ]);
+  revalidatePath("/admin");
+  redirect("/admin?ref=added#references");
+}
+
+/** Imports a Google Trends "related queries" CSV (e.g. with the YouTube Search filter). */
+export async function importTrendsCsv(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const file = formData.get("file");
+  const platform = formData.get("platform") === "google_search" ? "google_search" : "youtube";
+  const region = String(formData.get("region") ?? "IN").slice(0, 20) || "IN";
+  if (!(file instanceof File) || file.size === 0 || file.size > 200_000) redirect("/admin?ref=invalid#references");
+  const rows = parseTrendsCsv(await file.text());
+  if (!rows.length) redirect("/admin?ref=empty#references");
+  const db = await getDb();
+  const n = await addReferences(
+    db,
+    null,
+    rows.map((r) => ({
+      platform,
+      topic: r.query,
+      region,
+      url: null,
+      observedAt: new Date(),
+      evidenceType: "csv_import" as const,
+      sourceTool: platform === "youtube" ? "Google Trends (YouTube Search)" : "Google Trends (Web Search)",
+      note: `${r.section === "rising" ? "Rising" : "Top"} related query (${r.label})`,
+      value: r.value,
+    })),
+  );
+  revalidatePath("/admin");
+  redirect(`/admin?ref=imported&n=${n}#references`);
+}
+
+export async function deleteToolObservation(id: string): Promise<void> {
+  await requireAdmin();
+  await deleteSharedReference(await getDb(), z.string().max(64).parse(id));
+  revalidatePath("/admin");
 }

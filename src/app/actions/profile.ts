@@ -12,11 +12,14 @@ import { cookies } from "next/headers";
 import { config } from "@/lib/config";
 import { LANG_COOKIE } from "@/lib/i18n";
 import { getServerDict } from "@/lib/i18n/server";
+import { TEAM_BY_ID } from "@/lib/domain/sports/entities";
+import { TIMEZONES } from "@/lib/domain/sports/timezones";
 
 /** Keep the language cookie in sync when the creator changes app language in a form. */
 async function syncLangCookie(lang: string) {
   (await cookies()).set(LANG_COOKIE, lang, { path: "/", sameSite: "lax", secure: config().isProduction, maxAge: 60 * 60 * 24 * 365 });
 }
+
 
 const ProfileForm = z.object({
   displayName: z.string().trim().max(80).default(""),
@@ -29,6 +32,13 @@ const ProfileForm = z.object({
   styleNotes: z.string().trim().max(600).default(""),
   personalExamples: z.string().trim().max(1000).default(""),
   weeklyTimeHours: z.coerce.number().int().min(0).max(100).nullable().default(null),
+  sports: z
+    .object({
+      sports: z.array(z.enum(["cricket", "football"])).max(2).default([]),
+      teamIds: z.array(z.string().refine((id) => TEAM_BY_ID.has(id))).max(12).default([]),
+      timezone: z.enum(TIMEZONES).default("Asia/Kolkata"),
+    })
+    .default({ sports: [], teamIds: [], timezone: "Asia/Kolkata" }),
 });
 
 export interface ProfileState {
@@ -49,6 +59,7 @@ function parseForm(form: FormData) {
     styleNotes: form.get("styleNotes") ?? "",
     personalExamples: form.get("personalExamples") ?? "",
     weeklyTimeHours: hours === null || hours === "" ? null : hours,
+    sports: { sports: form.getAll("sports"), teamIds: form.getAll("teamIds"), timezone: form.get("timezone") ?? undefined },
   });
 }
 

@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db/client";
 import { apiError, json } from "@/lib/api";
 import { safeEqual } from "@/lib/auth/password";
 import { runAllEnabled } from "@/lib/jobs/ingest";
+import { SPORTS_KEYS, buildSportsConnector, runSportsIngestion } from "@/lib/jobs/sports-ingest";
 import { cleanupOldDemoUsers } from "@/lib/demo/seed";
 
 export const maxDuration = 120;
@@ -20,8 +21,13 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const db = await getDb();
   const results = await runAllEnabled(db, cfg, { trigger: "scheduled", force: url.searchParams.get("force") === "1" });
+  const sports = [];
+  for (const key of SPORTS_KEYS) {
+    const c = buildSportsConnector(key, cfg);
+    if (c) sports.push(await runSportsIngestion(db, c, { force: url.searchParams.get("force") === "1" }));
+  }
   const demoCleaned = await cleanupOldDemoUsers(db);
-  return json({ results, demoCleaned });
+  return json({ results, sports, demoCleaned });
 }
 
 /** Vercel Cron and similar schedulers issue GET with the same Bearer header. */

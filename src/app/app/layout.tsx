@@ -9,6 +9,7 @@ import { getServerDict } from "@/lib/i18n/server";
 import { signOut } from "@/app/actions/auth";
 import { after } from "next/server";
 import { refreshIfStale } from "@/lib/services/trend-context";
+import { refreshSportsIfStale } from "@/lib/jobs/sports-ingest";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Logo } from "@/components/logo";
 import { cx } from "@/components/ui";
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   const n = d.nav;
   // Keeps every enabled source fresh while people use the app — no cron or setup needed.
   after(() => refreshIfStale(db, new Date(), undefined, 20_000, 2).catch(() => undefined));
+  after(() => refreshSportsIfStale(db).catch(() => undefined));
 
   const items: NavItem[] = [
     { href: "/app", label: n.home, icon: "home", mobile: true },

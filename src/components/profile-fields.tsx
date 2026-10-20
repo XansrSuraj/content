@@ -2,7 +2,15 @@ import { CATEGORIES, LANGUAGES, REGIONS, TONES } from "@/lib/domain/options";
 import { PLATFORMS } from "@/lib/domain/platforms";
 import { LANGS, getDict, type Dict, type Lang } from "@/lib/i18n";
 import type { Profile } from "@/lib/repo/creator";
+import { TEAMS } from "@/lib/domain/sports/entities";
+import { TIMEZONES } from "@/lib/domain/sports/timezones";
 import { Field, Input, Select, Textarea } from "./ui";
+
+const TEAM_GROUPS = [
+  { key: "cricket-national", teams: TEAMS.filter((t) => t.sport === "cricket" && t.kind === "national") },
+  { key: "ipl", teams: TEAMS.filter((t) => t.kind === "franchise") },
+  { key: "football", teams: TEAMS.filter((t) => t.sport === "football") },
+];
 
 function Chip({ name, value, label, checked, note }: { name: string; value: string; label: string; checked: boolean; note?: string }) {
   return (
@@ -101,6 +109,37 @@ export function ProfileFields({ profile, d, defaultUiLanguage }: { profile: Prof
       <Field label={`${d.profile.hours} (${d.common.optional})`} htmlFor="weeklyTimeHours">
         <Input id="weeklyTimeHours" name="weeklyTimeHours" type="number" min={0} max={100} defaultValue={p?.weeklyTimeHours ?? ""} className="max-w-32" />
       </Field>
+
+      <fieldset>
+        <legend className="text-sm font-semibold">{d.sports.prefsTitle}</legend>
+        <p className="text-xs text-muted">{d.sports.prefsHint}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(["cricket", "football"] as const).map((s) => (
+            <Chip key={s} name="sports" value={s} label={d.sports.sportNames[s]} checked={p?.sports?.sports.includes(s) ?? false} />
+          ))}
+        </div>
+        <details className="mt-3" open={(p?.sports?.teamIds.length ?? 0) > 0}>
+          <summary className="cursor-pointer text-sm font-semibold">{d.sports.favTeams}</summary>
+          {TEAM_GROUPS.map((g) => (
+            <div key={g.key} className="mt-2 flex flex-wrap gap-1.5">
+              {g.teams.map((t) => (
+                <Chip key={t.id} name="teamIds" value={t.id} label={t.name} checked={p?.sports?.teamIds.includes(t.id) ?? false} />
+              ))}
+            </div>
+          ))}
+        </details>
+        <div className="mt-3 max-w-xs">
+          <Field label={d.sports.timezone} htmlFor="timezone">
+            <Select id="timezone" name="timezone" defaultValue={p?.sports?.timezone ?? "Asia/Kolkata"}>
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz.replace(/_/g, " ")}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </fieldset>
     </div>
   );
 }

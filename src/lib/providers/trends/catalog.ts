@@ -12,7 +12,7 @@ export interface SourceInfo {
   key: string;
   name: string;
   platform: string;
-  kind: "trend_topics" | "chart_sample" | "hashtag" | "audio" | "search_interest" | "demo";
+  kind: "trend_topics" | "chart_sample" | "hashtag" | "audio" | "search_interest" | "demo" | "fixtures";
   coverage: string;
   requirements: string[];
   policyNotes: string[];
@@ -174,6 +174,40 @@ export const SOURCES: SourceInfo[] = [
     ingestible: true,
   },
   {
+    key: "openfootball_fixtures",
+    name: "Football fixtures (openfootball)",
+    platform: "football",
+    kind: "fixtures",
+    coverage:
+      "Premier League, LaLiga, Bundesliga, Serie A and Ligue 1 fixture lists (next 14 days, last 10) from the public-domain openfootball project. Schedules only: no live status, and results appear when volunteers update the data — so started matches without a result are treated as status unknown.",
+    requirements: ["On by default (no key). SOURCE_OPENFOOTBALL_ENABLED=false turns it off."],
+    policyNotes: ["CC0 public-domain data on GitHub; fetched every 6 hours."],
+    docsUrl: "https://github.com/openfootball/football.json",
+    ingestible: false,
+  },
+  {
+    key: "football_data",
+    name: "Football live status (football-data.org)",
+    platform: "football",
+    kind: "fixtures",
+    coverage: "Fixtures, live status and full-time scores for 12 competitions (free tier; delayed). Used for match stage and results.",
+    requirements: ["FOOTBALL_DATA_TOKEN (free account at football-data.org)"],
+    policyNotes: ["Free tier: 10 calls/minute. TrendSaathi makes one shared call every 30 minutes with a daily cap of 150."],
+    docsUrl: "https://www.football-data.org/coverage",
+    ingestible: false,
+  },
+  {
+    key: "cricapi",
+    name: "Cricket fixtures & status (CricketData.org / CricAPI)",
+    platform: "cricket",
+    kind: "fixtures",
+    coverage: "Current and upcoming international and league cricket matches with status text. Data can lag real time.",
+    requirements: ["CRICAPI_KEY (free account at cricketdata.org — 100 calls/day)"],
+    policyNotes: ["Two shared calls per hour with a daily cap of 90, so the free quota is never exceeded. No keyless official cricket fixtures source exists."],
+    docsUrl: "https://cricketdata.org/",
+    ingestible: false,
+  },
+  {
     key: "trending_audio",
     name: "In-app trending audio (Reels / Shorts)",
     platform: "multi",
@@ -211,6 +245,12 @@ export function sourceStatus(key: string, cfg: AppConfig): { status: SourceStatu
       return cfg.sources.googleTrendsRssEnabled
         ? { status: "enabled", missing: [] }
         : { status: "disabled", missing: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true"] };
+    case "openfootball_fixtures":
+      return cfg.sources.openfootballEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_OPENFOOTBALL_ENABLED=true"] };
+    case "football_data":
+      return cfg.sources.footballDataTokenPresent ? { status: "enabled", missing: [] } : { status: "needs_config", missing: ["FOOTBALL_DATA_TOKEN"] };
+    case "cricapi":
+      return cfg.sources.cricApiKeyPresent ? { status: "enabled", missing: [] } : { status: "needs_config", missing: ["CRICAPI_KEY"] };
     case "apple_podcasts_top_in":
       return cfg.sources.applePodcastsEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_APPLE_PODCASTS_ENABLED=true"] };
     case "bluesky_trends":

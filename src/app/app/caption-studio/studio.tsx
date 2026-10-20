@@ -147,7 +147,7 @@ export function Studio(props: {
     // Optimistic: the creator's message appears immediately.
     setMessages((m) => [
       ...m,
-      { id: tempId, role: "user", text, mode: null, result: null, hashtags: [], contextUsed: null, createdAt: new Date().toISOString() },
+      { id: tempId, role: "user", text, mode: null, result: null, hashtags: [], contextUsed: null, sports: null, createdAt: new Date().toISOString() },
     ]);
     setDraft("");
     setPending(true);
@@ -365,6 +365,12 @@ export function Studio(props: {
                   platformId={context.platform}
                   outputMode={m.id === lastAssistant?.id ? context.outputMode : "full"}
                   compact={m.id !== lastAssistant?.id}
+                  onChooseMatch={(matchId, vs) => {
+                    const ctx = { ...context, matchId };
+                    setContext(ctx);
+                    send(d.sports.chooseMsg(vs), ctx);
+                  }}
+                  onRefreshMatch={() => send(d.sports.refreshMsg)}
                 />
               ) : null,
             )}

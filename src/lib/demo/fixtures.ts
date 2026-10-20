@@ -324,4 +324,5 @@ export const DEMO_EXAMPLE_RESULT: CaptionResult = {
     "Kept your Hinglish and didn't add any phone model or claims you didn't make.",
   ],
   limitations: ["This example was pre-written for the demo. It was not generated from your input."],
+  platformVersions: [],
 };

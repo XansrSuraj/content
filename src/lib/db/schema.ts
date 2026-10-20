@@ -56,6 +56,8 @@ export const creatorProfiles = pgTable("creator_profiles", {
   styleNotes: text("style_notes").notNull().default(""),
   personalExamples: text("personal_examples").notNull().default(""),
   weeklyTimeHours: integer("weekly_time_hours"),
+  /** Sports the creator covers, favourite teams (entity ids) and their timezone. */
+  sports: jsonb("sports").$type<SportsPrefs>().notNull().default({ sports: [], teamIds: [], timezone: "Asia/Kolkata" }),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -177,6 +179,49 @@ export const opportunityEvidence = pgTable(
 
 // ---------- Caption Studio ----------
 
+export interface SportsPrefs {
+  sports: ("cricket" | "football")[];
+  teamIds: string[];
+  timezone: string;
+}
+
+export interface MatchSnapshot {
+  id: string;
+  provider: string;
+  competition: string;
+  homeName: string;
+  awayName: string;
+  startsAt: string;
+  stage: "upcoming" | "live" | "completed" | "postponed" | "cancelled" | "unknown";
+  statusSource: "provider" | "schedule_only" | "creator";
+  statusCheckedAt: string;
+  resultSummary: string | null;
+  url: string | null;
+}
+
+export interface ReferenceSnapshot {
+  platform: string;
+  topic: string;
+  url: string | null;
+  evidenceType: "creator_reference" | "tool_observation" | "csv_import";
+  sourceTool: string;
+  observedAt: string;
+}
+
+export interface SportsContextUsed {
+  sport: "cricket" | "football" | null;
+  teams: string[];
+  players: string[];
+  contentType: string;
+  timeRef: string | null;
+  /** The match attached to this answer, as verified at generation time. */
+  match: MatchSnapshot | null;
+  /** Fixtures that fit equally well — the creator is asked to pick one. */
+  candidates: MatchSnapshot[];
+  references: ReferenceSnapshot[];
+  publishAt: string | null;
+}
+
 export interface TrendContextItem {
   title: string;
   sourceKey: string;
@@ -221,6 +266,8 @@ export const messages = pgTable(
     mode: text("mode", { enum: ["live_ai", "open_model", "local_ai", "template_preview", "example"] }),
     /** Trend observations given to the model as context for this answer (shown to the creator). */
     contextUsed: jsonb("context_used").$type<TrendContextItem[]>(),
+    /** Match facts, intent and references given to the model for this answer (shown to the creator). */
+    sports: jsonb("sports").$type<SportsContextUsed>(),
     createdAt: createdAt(),
   },
   (t) => [index("msg_conv_idx").on(t.conversationId, t.createdAt)],
@@ -350,3 +397,58 @@ export const rateLimits = pgTable("rate_limits", {
   windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
   count: integer("count").notNull().default(0),
 });
+
+// ---------- Sports fixtures (shared: fetched once per match, used by every creator) ----------
+
+export const sportsMatches = pgTable(
+  "sports_matches",
+  {
+    id: id(),
+    provider: text("provider").notNull(),
+    externalId: text("external_id").notNull(),
+    sport: text("sport", { enum: ["cricket", "football"] }).notNull(),
+    competition: text("competition").notNull(),
+    gender: text("gender", { enum: ["men", "women"] }).notNull().default("men"),
+    homeTeamId: text("home_team_id"),
+    awayTeamId: text("away_team_id"),
+    homeName: text("home_name").notNull(),
+    awayName: text("away_name").notNull(),
+    /** Always UTC; shown in the creator's timezone. */
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    status: text("status", { enum: ["scheduled", "live", "finished", "postponed", "cancelled", "unknown"] }).notNull(),
+    /** provider = live status feed; schedule_only = fixture list without live status; creator = entered by a creator. */
+    statusSource: text("status_source", { enum: ["provider", "schedule_only", "creator"] }).notNull(),
+    statusCheckedAt: timestamp("status_checked_at", { withTimezone: true }).notNull(),
+    resultSummary: text("result_summary"),
+    url: text("url"),
+    /** Creator-entered fixtures are private to that creator; provider fixtures are shared (null). */
+    ownerId: text("owner_id").references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("match_provider_ext").on(t.provider, t.externalId), index("match_sport_start").on(t.sport, t.startsAt)],
+);
+
+// ---------- Platform references (evidence a person saw in a platform tool) ----------
+
+export const platformReferences = pgTable(
+  "platform_references",
+  {
+    id: id(),
+    /** Null = shared (entered by an admin); otherwise private to the creator who added it. */
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull(),
+    topic: text("topic").notNull(),
+    region: text("region").notNull().default("IN"),
+    url: text("url"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    /** creator_reference = a creator pasted it; tool_observation = admin read it in a platform tool; csv_import = admin imported an export. */
+    evidenceType: text("evidence_type", { enum: ["creator_reference", "tool_observation", "csv_import"] }).notNull(),
+    sourceTool: text("source_tool").notNull(),
+    note: text("note").notNull().default(""),
+    value: integer("value"),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("ref_user_idx").on(t.userId), index("ref_observed_idx").on(t.observedAt)],
+);

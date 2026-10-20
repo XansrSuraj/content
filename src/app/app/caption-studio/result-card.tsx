@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { captionWithHashtags, type CaptionResult } from "@/lib/domain/captions";
 import { dedupeHashtags, hashtagsForCopy } from "@/lib/domain/hashtags";
 import { getPlatform } from "@/lib/domain/platforms";
@@ -8,6 +8,7 @@ import type { ClientHashtagStatus, ClientMessage } from "@/lib/services/serializ
 import { Check, ChevronDown, ChevronUp, CircleAlert, Dot, Pencil } from "lucide-react";
 import { useI18n } from "@/components/i18n-provider";
 import { CopyButton } from "@/components/copy-button";
+import { SportsPanel, type SportsPanelHandle } from "./sports-panel";
 import { Badge, Button, Card, Textarea, cx, formatDateTime } from "@/components/ui";
 
 const MODE_TONE = {
@@ -25,6 +26,8 @@ export function ResultCard({
   platformId,
   outputMode,
   compact = false,
+  onChooseMatch,
+  onRefreshMatch,
 }: {
   message: ClientMessage;
   result: CaptionResult;
@@ -33,7 +36,10 @@ export function ResultCard({
   outputMode: "full" | "final_only";
   /** Older replies collapse to the recommended caption, like chat apps keep history scannable. */
   compact?: boolean;
+  onChooseMatch?: (matchId: string, vs: string) => void;
+  onRefreshMatch?: () => void;
 }) {
+  const sportsRef = useRef<SportsPanelHandle>(null);
   const { d } = useI18n();
   const r = d.result;
   const platform = getPlatform(platformId);
@@ -68,7 +74,7 @@ export function ResultCard({
   }
 
   return (
-    <Card className="max-w-3xl overflow-hidden">
+    <Card className="max-w-3xl overflow-hidden" onClickCapture={() => sportsRef.current?.check()}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
         {mode && <Badge tone={mode.tone}>{mode.text}</Badge>}
         <span className="text-xs text-muted">{r.forPlatform(platform.label)}</span>
@@ -88,6 +94,16 @@ export function ResultCard({
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">{r.understood}</p>
           <p className="text-sm">{result.topicSummary}</p>
         </div>
+
+        {message.sports && (
+          <SportsPanel
+            ref={sportsRef}
+            sports={message.sports}
+            isLatest={!compact}
+            onChooseMatch={(id, vs) => onChooseMatch?.(id, vs)}
+            onRefresh={() => onRefreshMatch?.()}
+          />
+        )}
 
         {(result.assumptions.length > 0 || result.clarifyingQuestion) && outputMode === "full" && (
           <div className="rounded-lg bg-info-soft p-3 text-sm">
@@ -118,6 +134,7 @@ export function ResultCard({
               trendTitles={(message.contextUsed ?? []).map((c) => c.title)}
             />
           ))}
+          {result.platformVersions.length > 0 && <PlatformVersions versions={result.platformVersions} />}
           {!showAll && (
             <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
               <ChevronDown aria-hidden className="h-3.5 w-3.5" />
@@ -190,8 +207,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function TagChip({ tag, status }: { tag: string; status?: ClientHashtagStatus }) {
   const { d } = useI18n();
-  const tone = status?.status === "verified" ? "ok" : status?.status === "demo" ? "accent" : "neutral";
-  const label = status?.status === "verified" ? d.result.tagObserved : status?.status === "demo" ? d.result.tagDemo : null;
+  const tone = status?.status === "verified" ? "ok" : status?.status === "search_interest" ? "info" : status?.status === "demo" ? "accent" : "neutral";
+  const label =
+    status?.status === "verified"
+      ? d.result.tagObserved
+      : status?.status === "search_interest"
+        ? d.result.tagSearch
+        : status?.status === "demo"
+          ? d.result.tagDemo
+          : null;
   return (
     <Badge tone={tone} title={label ?? d.result.tagSuggestion}>
       {tag}
@@ -306,8 +330,9 @@ function VariantBlock({
 
 function HashtagSection({ result, statuses, platformId }: { result: CaptionResult; statuses: ClientHashtagStatus[]; platformId: string }) {
   const verified = statuses.filter((s) => s.status === "verified");
+  const searching = statuses.filter((s) => s.status === "search_interest");
   const demo = statuses.filter((s) => s.status === "demo");
-  const verifiedTags = new Set([...verified, ...demo].map((s) => s.tag.toLowerCase()));
+  const verifiedTags = new Set([...verified, ...searching, ...demo].map((s) => s.tag.toLowerCase()));
   const suggested = result.hashtagSuggestions.filter((h) => !verifiedTags.has(h.tag.toLowerCase()));
   const platform = getPlatform(platformId);
   const { d } = useI18n();
@@ -330,12 +355,14 @@ function HashtagSection({ result, statuses, platformId }: { result: CaptionResul
       {verified.length > 0 && (
         <EvidenceList title={d.result.observedIn(platform.family === "youtube" ? "YouTube" : platform.label)} tone="ok" items={verified} />
       )}
+      {searching.length > 0 && <EvidenceList title={d.result.searchInterestTitle} tone="info" items={searching} />}
       {demo.length > 0 && <EvidenceList title={d.result.demoExamples} tone="accent" items={demo} />}
+      <p className="mt-2 text-[11px] text-muted">{d.sports.labelsExplain}</p>
     </Section>
   );
 }
 
-function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "accent"; items: ClientHashtagStatus[] }) {
+function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "accent" | "info"; items: ClientHashtagStatus[] }) {
   const { lang, d } = useI18n();
   return (
     <div className="mt-3">
@@ -430,6 +457,29 @@ function PackagingCheck({ text, tags, platformId, trendTitles }: { text: string;
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** The recommended option adapted for each extra platform the creator picked. */
+function PlatformVersions({ versions }: { versions: CaptionResult["platformVersions"] }) {
+  const { d } = useI18n();
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">{d.sports.versions}</p>
+      {versions.map((v) => {
+        const platform = getPlatform(v.platform);
+        return (
+          <div key={v.platform} className="rounded-lg border border-line p-3">
+            <Badge tone="brand">{platform.label}</Badge>
+            <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed">{v.caption}</p>
+            {v.hashtags.length > 0 && <p className="mt-1 text-xs text-muted">{v.hashtags.join(" ")}</p>}
+            <div className="mt-2">
+              <CopyButton text={captionWithHashtags(v.caption, v.hashtags)} label={d.result.copyFor(platform.label)} variant="primary" />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
