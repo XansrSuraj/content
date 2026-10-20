@@ -131,3 +131,11 @@ describe("validator refinements from the sports eval", () => {
     expect(codes(safe).filter((c) => c === "platform_wording")).toEqual([]);
   });
 });
+
+describe("posting after kick-off", () => {
+  it("future-start wording is a timing claim when the post lands after kick-off", () => {
+    const r = resultWith("instagram_reels", { caption: "RCB vs MI ka match 7:30 pm se start hoga. Aapka prediction?" });
+    expect(codes(r, ctx({ stage: "unknown", postAfterStart: true, evidenceText: "7:30 pm" }))).toContain("timing_claim");
+    expect(codes(r, ctx({ stage: "upcoming", postAfterStart: false, evidenceText: "7:30 pm" }))).not.toContain("timing_claim");
+  });
+});

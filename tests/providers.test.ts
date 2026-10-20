@@ -8,7 +8,7 @@ import type { DB } from "@/lib/db/client";
 import { runCaptionTurn } from "@/lib/services/captions";
 import { listConversations } from "@/lib/repo/studio";
 import { usageRecords } from "@/lib/db/schema";
-import { sampleResult } from "./fixtures";
+import { sampleModelOutput, sampleResult } from "./fixtures";
 
 const settings = { apiKey: "test", model: "test-model", timeoutMs: 1000, maxOutputTokens: 1000, effort: "low" as const, fallbacks: "off" as const };
 const req = { context: DEFAULT_CONTEXT, originalInput: "x", message: "x", history: [], creator: null, evidenceNotes: [] };
@@ -23,7 +23,7 @@ function ok(parsed: unknown, stop = "end_turn") {
 
 describe("Anthropic caption provider", () => {
   it("returns validated live output with usage", async () => {
-    const p = new AnthropicCaptionProvider(settings, fakeClient(ok(sampleResult())));
+    const p = new AnthropicCaptionProvider(settings, fakeClient(ok(sampleModelOutput())));
     const out = await p.generate(req);
     expect(out.mode).toBe("live_ai");
     expect(out.usage).toEqual({ inputTokens: 10, outputTokens: 20, model: "test-model" });

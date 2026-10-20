@@ -3,8 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
 import {
+  CaptionFromModelSchema,
   CaptionModelOutputSchema,
-  CaptionResultSchema,
   type CaptionResult,
 } from "@/lib/domain/captions";
 import { BriefContentSchema, BriefModelOutputSchema, type BriefContent } from "@/lib/domain/briefs";
@@ -133,7 +133,7 @@ export class AnthropicCaptionProvider implements CaptionProvider {
       buildCaptionUserPrompt(req),
       CaptionModelOutputSchema,
     );
-    const checked = CaptionResultSchema.safeParse(out.parsed);
+    const checked = CaptionFromModelSchema.safeParse(out.parsed);
     if (!checked.success) {
       throw new ProviderError("invalid_output", "The AI response failed validation (e.g. not exactly 3 options).", true);
     }

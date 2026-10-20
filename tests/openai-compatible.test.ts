@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { OpenAICompatCaptionProvider, type OpenAICompatSettings } from "@/lib/providers/ai/openai-compatible";
 import { DEFAULT_CONTEXT } from "@/lib/domain/captions";
 import { aiStatus, readConfig } from "@/lib/config";
-import { sampleResult } from "./fixtures";
+import { sampleModelOutput } from "./fixtures";
 
 const settings: OpenAICompatSettings = {
   baseUrl: "https://api.groq.com/openai/v1",
@@ -26,7 +26,7 @@ type Fetch = (u: string, i: RequestInit) => Promise<Response>;
 
 describe("OpenAI-compatible open-model provider (Groq default)", () => {
   it("sends strict JSON-schema output, bearer auth and low reasoning effort; returns validated output", async () => {
-    const fetchMock = vi.fn<Fetch>(async () => completion(JSON.stringify(sampleResult())));
+    const fetchMock = vi.fn<Fetch>(async () => completion(JSON.stringify(sampleModelOutput())));
     const out = await new OpenAICompatCaptionProvider(settings, fetchMock).generate(req);
     expect(out.mode).toBe("open_model");
     expect(out.usage).toEqual({ inputTokens: 700, outputTokens: 400, model: "openai/gpt-oss-20b" });
@@ -43,7 +43,7 @@ describe("OpenAI-compatible open-model provider (Groq default)", () => {
   });
 
   it("json_object mode puts the schema in the prompt instead", async () => {
-    const fetchMock = vi.fn<Fetch>(async () => completion(JSON.stringify(sampleResult())));
+    const fetchMock = vi.fn<Fetch>(async () => completion(JSON.stringify(sampleModelOutput())));
     await new OpenAICompatCaptionProvider({ ...settings, jsonMode: "json_object", reasoningEffort: null }, fetchMock).generate(req);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
     expect(body.response_format).toEqual({ type: "json_object" });
@@ -52,19 +52,33 @@ describe("OpenAI-compatible open-model provider (Groq default)", () => {
   });
 
   it("repairs once after invalid output or a host-side schema rejection", async () => {
-    const bad = { ...sampleResult(), variants: sampleResult().variants.slice(0, 1) };
-    const f1 = vi.fn<Fetch>().mockResolvedValueOnce(completion(JSON.stringify(bad))).mockResolvedValueOnce(completion(JSON.stringify(sampleResult())));
+    const good = sampleModelOutput();
+    const bad = { ...good, platforms: [{ ...good.platforms[0], options: good.platforms[0].options.slice(0, 1) }] };
+    const f1 = vi.fn<Fetch>().mockResolvedValueOnce(completion(JSON.stringify(bad))).mockResolvedValueOnce(completion(JSON.stringify(sampleModelOutput())));
     expect((await new OpenAICompatCaptionProvider(settings, f1).generate(req)).data.variants).toHaveLength(3);
     expect(f1).toHaveBeenCalledTimes(2);
 
     const f2 = vi
       .fn<Fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "Generated JSON does not match the expected schema" } }), { status: 400 }))
-      .mockResolvedValueOnce(completion(JSON.stringify(sampleResult())));
+      .mockResolvedValueOnce(completion(JSON.stringify(sampleModelOutput())));
     expect((await new OpenAICompatCaptionProvider(settings, f2).generate(req)).data.variants).toHaveLength(3);
   });
 
-  it("maps auth, rate-limit, missing-model, network and timeout errors", async () => {
+  it("uses the host's failed_generation so a near-miss reply is repaired, and states v2 issues", async () => {
+    const good = sampleModelOutput();
+    const near = { ...good, platforms: [{ ...good.platforms[0], options: good.platforms[0].options.slice(0, 2) }] };
+    const f = vi
+      .fn<Fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "json_validate_failed", message: "schema", failed_generation: JSON.stringify(near) } }), { status: 400 }))
+      .mockResolvedValueOnce(completion(JSON.stringify(good)));
+    const out = await new OpenAICompatCaptionProvider(settings, f).generate(req);
+    expect(out.data.platforms[0].options).toHaveLength(3);
+    const repairAsk = JSON.parse(String(f.mock.calls[1][1]?.body)).messages.at(-1).content;
+    expect(repairAsk).toMatch(/platforms\.0\.options: Must be exactly 3 options/);
+  });
+
+    it("maps auth, rate-limit, missing-model, network and timeout errors", async () => {
     const run = (f: Fetch) => new OpenAICompatCaptionProvider(settings, f).generate(req).catch((e) => e);
     expect(await run(async () => new Response("no", { status: 401 }))).toMatchObject({ code: "auth_error", retryable: false });
     expect(await run(async () => new Response("slow down", { status: 429 }))).toMatchObject({ code: "upstream_rate_limited", retryable: true });

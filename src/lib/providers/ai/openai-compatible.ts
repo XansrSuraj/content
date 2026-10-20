@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CaptionModelOutputSchema, CaptionResultSchema, type CaptionResult } from "@/lib/domain/captions";
+import { CaptionFromModelSchema, CaptionModelOutputSchema, type CaptionResult } from "@/lib/domain/captions";
 import { BriefContentSchema, BriefModelOutputSchema, type BriefContent } from "@/lib/domain/briefs";
 import { BRIEF_SYSTEM_PROMPT, CAPTION_SYSTEM_PROMPT, buildBriefUserPrompt, buildCaptionUserPrompt } from "./prompts";
 import { extractJson, jsonSchemaFor } from "./ollama";
@@ -87,7 +87,20 @@ async function complete(
     if (res.status === 429) throw new ProviderError("upstream_rate_limited", `${s.hostLabel} free-tier limit reached. Try again in a minute.`, true);
     if (res.status === 404) throw new ProviderError("upstream_error", `${s.hostLabel} does not offer the model "${s.model}".`, false);
     // Some hosts reject a reply that broke the schema with a 400 — that is worth one repair.
-    if (res.status === 400 && /schema|json/i.test(text)) return { content: "", inputTokens: 0, outputTokens: 0, model: s.model, truncated: false };
+    if (res.status === 400 && /schema|json/i.test(text)) {
+      // Groq returns the rejected reply as `failed_generation`: validate and repair it ourselves.
+      let failed = "";
+      let code = "";
+      try {
+        const e = (JSON.parse(text) as { error?: { code?: string; failed_generation?: string } }).error;
+        failed = e?.failed_generation ?? "";
+        code = e?.code ?? "";
+      } catch {
+        /* not JSON */
+      }
+      console.warn(`[openai-compatible] host rejected the reply (${code || "schema"}); ${failed ? "repairing it" : "no reply to repair"}`);
+      return { content: failed, inputTokens: 0, outputTokens: 0, model: s.model, truncated: false };
+    }
     throw new ProviderError("upstream_error", `${s.hostLabel} returned an error (HTTP ${res.status}).`, res.status >= 500);
   }
 
@@ -147,7 +160,7 @@ export class OpenAICompatCaptionProvider implements CaptionProvider {
   ) {}
 
   async generate(req: CaptionRequest): Promise<ProviderOutput<CaptionResult>> {
-    const out = await structured(this.settings, this.fetchImpl, CAPTION_SYSTEM_PROMPT, buildCaptionUserPrompt(req), "caption_result", CaptionModelOutputSchema, CaptionResultSchema, req.signal);
+    const out = await structured(this.settings, this.fetchImpl, CAPTION_SYSTEM_PROMPT, buildCaptionUserPrompt(req), "caption_result", CaptionModelOutputSchema, CaptionFromModelSchema, req.signal);
     return { data: out.data, mode: "open_model", usage: { inputTokens: out.inputTokens, outputTokens: out.outputTokens, model: out.model } };
   }
 }

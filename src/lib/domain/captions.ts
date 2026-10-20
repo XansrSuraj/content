@@ -212,6 +212,29 @@ const CaptionResultBase = z.object({
 export const CaptionResultSchema = z.preprocess(fromV2, CaptionResultBase);
 export type CaptionResult = z.infer<typeof CaptionResultBase>;
 
+/**
+ * What providers validate model replies with: the v2 shape is checked first, so any
+ * error is reported in the terms the model was asked for (platforms × 3 options of
+ * different kinds), then the reply is converted into the stored result.
+ */
+export const CaptionFromModelSchema = CaptionModelOutputSchema.superRefine((v, ctx) => {
+  if (v.platforms.length === 0) ctx.addIssue({ code: "custom", path: ["platforms"], message: "Must contain one entry per platform listed in <context>.platforms" });
+  v.platforms.forEach((p, i) => {
+    const kinds = p.options.map((o) => o.kind);
+    if (p.options.length !== 3 || new Set(kinds).size !== 3) {
+      ctx.addIssue({ code: "custom", path: ["platforms", i, "options"], message: "Must be exactly 3 options: original_improved, search_focused, conversation_focused (one each)" });
+    }
+    p.options.forEach((o, j) => {
+      if (!(o.caption || o.description || o.title).trim()) ctx.addIssue({ code: "custom", path: ["platforms", i, "options", j], message: "Option text is empty" });
+    });
+  });
+}).transform((v, ctx) => {
+  const r = CaptionResultSchema.safeParse(v);
+  if (r.success) return r.data;
+  for (const i of r.error.issues) ctx.addIssue({ code: "custom", path: i.path as (string | number)[], message: i.message });
+  return z.NEVER;
+});
+
 export type GenerationMode = "live_ai" | "open_model" | "local_ai" | "template_preview" | "example";
 
 // ---------- Follow-up constraint extraction ----------

@@ -37,6 +37,8 @@ export interface ValidationContext {
   stage: MatchStage | null;
   /** A verified result exists (completed, live-status provider). */
   resultVerified: boolean;
+  /** The post goes out after kick-off: "will start / kal hoga" phrasing would be wrong when it is read. */
+  postAfterStart?: boolean;
   language: "hinglish" | "hindi" | "english";
 }
 
@@ -56,6 +58,8 @@ const UNVERIFIABLE_FACT =
 
 /** First-person experiences the creator did not describe (checked against their own text). */
 const EXPERIENCE: RegExp[] = [/\b(i was at the stadium|stadium mein (tha|thi|the)|maine (unse|use|virat|dhoni|rohit) mil|i met (him|her|virat|dhoni|rohit)|backstage|dressing room mein)\b/i];
+
+const FUTURE_START = /\b(will start|starts at|starting at|kicks off at|start hoga|shuru hoga|hone wala hai|hone wali hai|kal hoga|aaj hoga|kal khelenge|kal khela jayega)\b|शुरू होगा|कल होगा|आज होगा|खेला जाएगा/i;
 
 const DEVA = /[ऀ-ॿ]/;
 
@@ -120,6 +124,7 @@ export function validateResult(result: CaptionResult, ctx: ValidationContext): V
           if ((ctx.stage === "unknown" || ctx.stage === "upcoming") && LIVE_CLAIM.test(s) && !LIVE_CLAIM.test(ctx.sourceText)) {
             push("timing_claim", field, "claims the match is live/today without a verified status", s);
           }
+          if (ctx.postAfterStart && FUTURE_START.test(s)) push("timing_claim", field, "says the match is still to start, but the post goes out after kick-off", s);
           const unsupported = checkedNumbers(s).filter((n) => !sourceDigits.has(n));
           if (unsupported.length) push("unsupported_number", field, `number ${unsupported[0]} is not in your caption or the evidence`, s);
           for (const [re, what] of BANNED) if (re.test(s)) push("banned_claim", field, `contains a ${what}`, s);

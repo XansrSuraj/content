@@ -219,6 +219,7 @@ ${sports.trendTerms}`,
     stage: sports.stage,
     resultVerified: Boolean(sports.match && sports.stage === "completed" && sports.match.statusSource === "provider" && sports.match.resultSummary),
     language: context.language,
+    postAfterStart: Boolean(sports.match && context.publishAt && new Date(context.publishAt).getTime() >= sports.match.startsAt.getTime()),
   };
 
   // Deterministic validation; targeted repair (max 2) for AI output, then a conservative safe result.
