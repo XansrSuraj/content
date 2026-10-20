@@ -64,6 +64,8 @@ export interface CaptionRequest {
   onProgress?: (p: { tokens: number; text: string }) => void;
   /** Aborted when the creator presses Stop / closes the request. Providers may ignore it. */
   signal?: AbortSignal;
+  /** Set on a repair attempt: what the previous answer got wrong (from the deterministic validator). */
+  repair?: string[];
 }
 
 export interface CaptionProvider {

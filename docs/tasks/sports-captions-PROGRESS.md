@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 6 — Output validation (Phases 0–5 done)
+**Current phase:** 7 — Resilience + scheduling (Phases 0–6 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-21
 
@@ -272,3 +272,17 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - `finalizeHashtags` runs on every answer: each platform option gets entity tags first plus the model's surviving tags. Suggestions get the same cleaning and keep their reasons ("Team in your video", "Competition", "Player you mention", or the model's reason). The older variant/platformVersion fields are re-derived.
 - **UI:** two separate groups. "Relevant suggestions" has expandable "Why these hashtags". "Seen in a source" holds platform evidence, search interest and demo items, each with its source and time. There are no counts or volume anywhere.
 - **Tests:** 188 unit tests passing (new `tests/hashtag-builder.test.ts`).
+
+## Phase 6 — Output validation: DONE (2026-10-21)
+- **`src/lib/domain/validate-output.ts`**: deterministic checks on every option of every platform.
+  - `extra_entity`: a team or player not in the video/resolved match.
+  - `result_claim`: a result or score when no verified result exists for the posting-time stage (allowed only with a verified completed provider match, or when the creator's own text states it).
+  - `timing_claim`: "live" or "aaj ka match" when the stage is unknown or upcoming.
+  - `unsupported_number`: any 2+ digit number, or a number with a sports/stat unit, that is not in the caption or evidence.
+  - `language_mix`: Devanagari in Hinglish output unless the creator used it; an English sentence (5+ Latin words) in Hindi output.
+  - `missing_field` / `too_long` against official limits only; `platform_wording` from the adapter's forbidden list.
+  - `hashtag_issue`: duplicates or filler.
+  - `banned_claim`: giveaway, shoutout/follow-back, insider access, virality promises, invented first-person experiences, or an injury/lineup/transfer/record not in the caption or evidence.
+- **Repair:** for AI output (`live_ai` / `open_model`), up to **2** targeted repair calls. Each sends `<validation_issues>` (platform / option / field / problem / sentence) plus the previous answer; the attempt with the fewest issues is kept, and repair calls are recorded in usage.
+- **Fallback:** if issues remain, or for template/local output, `safeResult` removes only the failing sentences, trims over-long fields, drops filler/duplicate tags, never leaves a required field empty (falls back to the creator's own words) and adds a limitation note. `syncLegacyFields` re-derives the older fields.
+- **Tests:** 198 unit tests passing (new `tests/validate-output.test.ts` covering every spec validator case plus the repair loop); E2E 10/10.

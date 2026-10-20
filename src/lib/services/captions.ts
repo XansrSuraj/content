@@ -8,6 +8,7 @@ import {
   CaptionContextSchema,
   CaptionResultSchema,
   enforceConstraints,
+  syncLegacyFields,
   type CaptionContext,
   type CaptionResult,
 } from "@/lib/domain/captions";
@@ -27,6 +28,7 @@ import {
 import { checkAiQuota } from "@/lib/security/rate-limit";
 import { buildEvidence } from "./evidence";
 import { finalizeHashtags } from "@/lib/domain/hashtag-builder";
+import { repairInstructions, safeResult, validateResult, type ValidationContext } from "@/lib/domain/validate-output";
 import { buildSportsContext } from "./sports-context";
 
 export const CaptionTurnSchema = z.object({
@@ -61,6 +63,9 @@ function compactResult(r: CaptionResult): string {
     `\nRecommended: ${rec?.id ?? r.recommendedVariantId}`
   );
 }
+
+/** Targeted repair attempts after the first answer (bounded so free quotas last). */
+const MAX_REPAIRS = 2;
 
 export function historyFromMessages(msgs: Message[]): CaptionTurn[] {
   const turns: CaptionTurn[] = [];
@@ -197,11 +202,50 @@ ${sports.trendTerms}`,
     return { ok: false, error: { kind: "provider", code: "cancelled", message: "Stopped.", retryable: true } };
   }
   const matchTeamIds = sports.match ? [sports.match.homeTeamId, sports.match.awayTeamId].filter((x): x is string => Boolean(x)) : [];
-  const result = finalizeHashtags(flagUnmetRequests(enforceConstraints(output.data, context), applied, history), {
+  const finish = (data: CaptionResult) =>
+    finalizeHashtags(flagUnmetRequests(enforceConstraints(data, context), applied, history), { intent: sports.intent, matchTeamIds, primaryPlatform: context.platform });
+  const vctx: ValidationContext = {
+    sourceText: conversationText,
+    evidenceText: evidenceNotes.join("\n"),
     intent: sports.intent,
     matchTeamIds,
-    primaryPlatform: context.platform,
-  });
+    stage: sports.stage,
+    resultVerified: Boolean(sports.match && sports.stage === "completed" && sports.match.statusSource === "provider" && sports.match.resultSummary),
+    language: context.language,
+  };
+
+  // Deterministic validation; targeted repair (max 2) for AI output, then a conservative safe result.
+  let best = finish(output.data);
+  let bestIssues = best.platforms.length ? validateResult(best, vctx) : [];
+  const repairable = output.mode === "live_ai" || output.mode === "open_model";
+  for (let attempt = 0; attempt < MAX_REPAIRS && repairable && bestIssues.length && !opts.signal?.aborted; attempt++) {
+    const repairStarted = Date.now();
+    try {
+      const again = await provider.generate({
+        context,
+        originalInput,
+        message: input.message,
+        history: [...historyFromMessages(history), { role: "user", text: input.message.slice(0, 1500) }, { role: "assistant", text: compactResult(best) }],
+        creator: profile ? { displayName: profile.displayName, categories: profile.categories, styleNotes: profile.styleNotes, personalExamples: profile.personalExamples } : null,
+        evidenceNotes,
+        signal: opts.signal,
+        repair: repairInstructions(bestIssues),
+      });
+      await recordUsage(db, { userId: user.id, kind: "caption", provider: provider.name, model: again.usage.model, status: "ok", inputTokens: again.usage.inputTokens, outputTokens: again.usage.outputTokens, latencyMs: Date.now() - repairStarted, errorCode: "repair" });
+      const candidate = finish(again.data);
+      const issues = candidate.platforms.length ? validateResult(candidate, vctx) : [];
+      if (issues.length < bestIssues.length) {
+        best = candidate;
+        bestIssues = issues;
+      }
+    } catch {
+      break; // keep the best answer so far; the safe pass below handles what is left
+    }
+  }
+  if (opts.signal?.aborted) {
+    return { ok: false, error: { kind: "provider", code: "cancelled", message: "Stopped.", retryable: true } };
+  }
+  const result = bestIssues.length ? syncLegacyFields(safeResult(best, bestIssues, originalInput)) : best;
 
   if (!conversation) {
     conversation = await createConversation(db, user.id, {

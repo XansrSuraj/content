@@ -147,6 +147,22 @@ function fromV2(input: unknown): unknown {
   };
 }
 
+/** Re-derives variants/platformVersions from v2 platforms after options were edited (e.g. by the safe pass). */
+export function syncLegacyFields(r: CaptionResult): CaptionResult {
+  const primary = r.platforms[0];
+  if (!primary) return r;
+  const variants = r.variants.map((v) => {
+    const o = primary.options.find((x) => KIND_TO_VARIANT[x.kind] === v.id);
+    return o ? { ...v, caption: optionText(o) || v.caption, hashtags: o.hashtags } : v;
+  });
+  const platformVersions = r.platformVersions.map((pv) => {
+    const p = r.platforms.find((x) => x.platform === pv.platform);
+    const o = p?.options.find((x) => x.kind === p.recommended);
+    return o ? { ...pv, caption: optionText(o) || pv.caption, hashtags: o.hashtags } : pv;
+  });
+  return { ...r, variants, platformVersions };
+}
+
 const CaptionResultBase = z.object({
   topicSummary: z.string().min(1).max(600),
   assumptions: z.array(z.string().max(300)).max(6),

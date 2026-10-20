@@ -145,7 +145,16 @@ ${history}
 <creator_message>
 ${req.message}
 </creator_message>
+${
+  req.repair?.length
+    ? `
+<validation_issues>
+${req.repair.map((r) => `- ${r}`).join("\n")}
+</validation_issues>
 
+Your previous answer (last assistant turn) broke the rules above. Return the full answer again with only these problems fixed. Keep the match identity, verified facts, language and everything else that was fine.`
+    : ""
+}
 Respond to the latest creator message. Keep the original topic and every constraint in <context>.`;
 }
 
