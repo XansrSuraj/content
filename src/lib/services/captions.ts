@@ -26,6 +26,7 @@ import {
 } from "@/lib/repo/studio";
 import { checkAiQuota } from "@/lib/security/rate-limit";
 import { buildEvidence } from "./evidence";
+import { finalizeHashtags } from "@/lib/domain/hashtag-builder";
 import { buildSportsContext } from "./sports-context";
 
 export const CaptionTurnSchema = z.object({
@@ -195,7 +196,12 @@ ${sports.trendTerms}`,
   if (opts.signal?.aborted) {
     return { ok: false, error: { kind: "provider", code: "cancelled", message: "Stopped.", retryable: true } };
   }
-  const result = flagUnmetRequests(enforceConstraints(output.data, context), applied, history);
+  const matchTeamIds = sports.match ? [sports.match.homeTeamId, sports.match.awayTeamId].filter((x): x is string => Boolean(x)) : [];
+  const result = finalizeHashtags(flagUnmetRequests(enforceConstraints(output.data, context), applied, history), {
+    intent: sports.intent,
+    matchTeamIds,
+    primaryPlatform: context.platform,
+  });
 
   if (!conversation) {
     conversation = await createConversation(db, user.id, {

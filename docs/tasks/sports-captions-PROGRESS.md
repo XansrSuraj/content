@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 5 — Hashtags (Phases 0–4 done)
+**Current phase:** 6 — Output validation (Phases 0–5 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-21
 
@@ -262,3 +262,13 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - **Follow-up chips** (all 3 languages): Shorter · More natural Hinglish · Keep my first line · Remove emoji · Less promotional · "Focus on <player>" (when the video names one) · Change platform (opens the platform picker). The parser handles natural-Hinglish and focus notes.
 - **UI:** platform tabs; recommended option first, 2 alternatives collapsed; YouTube title + description fields; character counter against the verified limit (marked when unverified); "why"; copy per field (title, description, caption, hashtags, all); edit and save. Match facts in the evidence list now show start time, status-checked time and source.
 - **Tests:** 183 unit (new `pipeline-v2.test.ts`, `platform-adapters.test.ts`); E2E 10/10 (updated for v2: "Recommended" badge, YouTube tab with title/description copy buttons).
+
+## Phase 5 — Hashtags: DONE (2026-10-21)
+- `src/lib/domain/hashtag-builder.ts`:
+  - **Candidates from confirmed content:** fixture tag (#RCBvsMI), both teams, competition, players the creator mentions, video type (#MatchPreview / #MatchPrediction / #MatchHighlights / #MatchAnalysis / throwback), sport.
+  - **Cleaning:** case-variant duplicates removed; a filler blocklist (#viral, #fyp, #foryou, #trending, #explore, #explorepage, #reels, #instagood, like4like…); `#Shorts` only on YouTube.
+  - **Mismatched entities:** each tag is split into words (#CSKvsDC → "CSK vs DC") and read with the entity rules; a tag naming a team or player the video isn't about is removed.
+  - **Count per platform** = the platform's editorial copy default, never above its hard limit (Instagram 5, YouTube 3, Facebook 3, TikTok 4).
+- `finalizeHashtags` runs on every answer: each platform option gets entity tags first plus the model's surviving tags. Suggestions get the same cleaning and keep their reasons ("Team in your video", "Competition", "Player you mention", or the model's reason). The older variant/platformVersion fields are re-derived.
+- **UI:** two separate groups. "Relevant suggestions" has expandable "Why these hashtags". "Seen in a source" holds platform evidence, search interest and demo items, each with its source and time. There are no counts or volume anywhere.
+- **Tests:** 188 unit tests passing (new `tests/hashtag-builder.test.ts`).

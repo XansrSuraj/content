@@ -352,31 +352,45 @@ function HashtagSection({ result, statuses, platformId }: { result: CaptionResul
   const verified = statuses.filter((s) => s.status === "verified");
   const searching = statuses.filter((s) => s.status === "search_interest");
   const demo = statuses.filter((s) => s.status === "demo");
-  const verifiedTags = new Set([...verified, ...searching, ...demo].map((s) => s.tag.toLowerCase()));
-  const suggested = result.hashtagSuggestions.filter((h) => !verifiedTags.has(h.tag.toLowerCase()));
+  const seenTags = new Set([...verified, ...searching, ...demo].map((s) => s.tag.toLowerCase()));
+  const suggested = result.hashtagSuggestions.filter((h) => !seenTags.has(h.tag.toLowerCase()));
   const platform = getPlatform(platformId);
   const { d } = useI18n();
+  const seenAny = verified.length + searching.length + demo.length > 0;
 
   return (
     <Section title={d.result.hashtags}>
       {suggested.length > 0 && (
         <div>
+          <p className="text-sm font-semibold">{d.result.groupSuggested}</p>
           <p className="mb-1 text-xs text-muted">{d.result.notVerified}</p>
-          <ul className="space-y-1">
+          <div className="flex flex-wrap gap-1">
             {suggested.map((h) => (
-              <li key={h.tag} className="flex flex-wrap items-baseline gap-2 text-sm">
-                <Badge>{h.tag}</Badge>
-                <span className="text-xs text-muted">{h.reason}</span>
-              </li>
+              <Badge key={h.tag}>{h.tag}</Badge>
             ))}
-          </ul>
+          </div>
+          <details className="mt-1 text-xs">
+            <summary className="cursor-pointer text-muted">{d.result.whyTags}</summary>
+            <ul className="mt-1 space-y-0.5">
+              {suggested.map((h) => (
+                <li key={h.tag}>
+                  <span className="font-medium">{h.tag}</span> <span className="text-muted">— {h.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
-      {verified.length > 0 && (
-        <EvidenceList title={d.result.observedIn(platform.family === "youtube" ? "YouTube" : platform.label)} tone="ok" items={verified} />
+      {seenAny && (
+        <div className="mt-3">
+          <p className="text-sm font-semibold">{d.result.groupSeen}</p>
+          {verified.length > 0 && (
+            <EvidenceList title={d.result.observedIn(platform.family === "youtube" ? "YouTube" : platform.label)} tone="ok" items={verified} />
+          )}
+          {searching.length > 0 && <EvidenceList title={d.result.searchInterestTitle} tone="info" items={searching} />}
+          {demo.length > 0 && <EvidenceList title={d.result.demoExamples} tone="accent" items={demo} />}
+        </div>
       )}
-      {searching.length > 0 && <EvidenceList title={d.result.searchInterestTitle} tone="info" items={searching} />}
-      {demo.length > 0 && <EvidenceList title={d.result.demoExamples} tone="accent" items={demo} />}
       <p className="mt-2 text-[11px] text-muted">{d.sports.labelsExplain}</p>
     </Section>
   );
