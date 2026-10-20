@@ -49,6 +49,7 @@ export const SOURCES: SourceInfo[] = [
       "Stored data is refreshed or deleted within 30 days (enforced via expires_at).",
       "No derived scores from YouTube data; we show chart position and titles only, with YouTube attribution.",
       "Default quota 10,000 units/day; one chart call costs 1 unit.",
+      "YouTube's keyless channel RSS (/feeds/videos.xml) is disallowed for automated fetching by youtube.com/robots.txt, and Invidious/Piped mirrors scrape YouTube — neither is used.",
     ],
     docsUrl: "https://developers.google.com/youtube/v3/docs/videos/list",
     ingestible: true,
@@ -135,6 +136,44 @@ export const SOURCES: SourceInfo[] = [
     ingestible: true,
   },
   {
+    key: "apple_podcasts_top_in",
+    name: "Top podcasts in India (Apple Podcasts chart)",
+    platform: "apple_podcasts",
+    kind: "chart_sample",
+    coverage: "The 50 top shows on Apple Podcasts in India, from Apple's public chart feed, refreshed hourly. Listening interest — not YouTube or Instagram data.",
+    requirements: ["On by default (no key, no account). SOURCE_APPLE_PODCASTS_ENABLED=false turns it off."],
+    policyNotes: ["Apple's public marketing RSS feed; each show links back to Apple Podcasts."],
+    docsUrl: "https://rss.marketingtools.apple.com/",
+    ingestible: true,
+  },
+  {
+    key: "bluesky_trends",
+    name: "Bluesky trending topics (worldwide)",
+    platform: "bluesky",
+    kind: "trend_topics",
+    coverage:
+      "Up to 25 topics trending on Bluesky right now, with Bluesky's post counts, from its public API. Worldwide and English-heavy — a real social-network signal, but not Indian audiences and not Instagram or YouTube.",
+    requirements: ["On by default (no key, no account). SOURCE_BLUESKY_ENABLED=false turns it off."],
+    policyNotes: [
+      "Public AppView API (public.api.bsky.app), fetched anonymously every 30 minutes.",
+      "The endpoint is in Bluesky's 'unspecced' namespace and may change; responses are validated strictly.",
+    ],
+    docsUrl: "https://docs.bsky.app/docs/advanced-guides/api-directory",
+    ingestible: true,
+  },
+  {
+    key: "mastodon_trending_tags",
+    name: "Mastodon trending hashtags (worldwide)",
+    platform: "mastodon",
+    kind: "hashtag",
+    coverage:
+      "Up to 20 hashtags trending on mastodon.social, with today's use counts, from Mastodon's public trends API. Worldwide, Mastodon only — never used as evidence for Instagram, YouTube or TikTok hashtags.",
+    requirements: ["On by default (no key, no account). SOURCE_MASTODON_ENABLED=false turns it off."],
+    policyNotes: ["Public REST API (GET /api/v1/trends/tags), fetched anonymously every 30 minutes."],
+    docsUrl: "https://docs.joinmastodon.org/methods/trends/",
+    ingestible: true,
+  },
+  {
     key: "trending_audio",
     name: "In-app trending audio (Reels / Shorts)",
     platform: "multi",
@@ -172,6 +211,12 @@ export function sourceStatus(key: string, cfg: AppConfig): { status: SourceStatu
       return cfg.sources.googleTrendsRssEnabled
         ? { status: "enabled", missing: [] }
         : { status: "disabled", missing: ["SOURCE_GOOGLE_TRENDS_RSS_ENABLED=true"] };
+    case "apple_podcasts_top_in":
+      return cfg.sources.applePodcastsEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_APPLE_PODCASTS_ENABLED=true"] };
+    case "bluesky_trends":
+      return cfg.sources.blueskyEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_BLUESKY_ENABLED=true"] };
+    case "mastodon_trending_tags":
+      return cfg.sources.mastodonEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_MASTODON_ENABLED=true"] };
     case "apple_music_top_in":
       return cfg.sources.appleMusicEnabled ? { status: "enabled", missing: [] } : { status: "disabled", missing: ["SOURCE_APPLE_MUSIC_ENABLED=true"] };
     case "youtube_most_popular_in":

@@ -136,6 +136,22 @@ Keep this file current so work can resume across sessions.
 - **Still keyed:** the YouTube Most Popular chart needs a free `YOUTUBE_API_KEY` (Google Cloud). There is no keyless official route, and the keyless "Invidious/Piped" mirrors scrape YouTube, so they are not used.
 - **Tests:** 105 unit (new `tests/apple-music.test.ts`), 9/9 E2E (new `e2e/sources.spec.ts`).
 
+## Session 9 (2026-10-20): more free, official sources
+- **New keyless sources (all on by default, each with an `SOURCE_*_ENABLED=false` switch):**
+  - **Apple Podcasts top shows in India.** `AppleChartConnector` now covers both songs and podcasts.
+  - **Bluesky trending topics** (worldwide, with post counts), from the public AppView `app.bsky.unspecced.getTrends`.
+  - **Mastodon trending hashtags** (mastodon.social, with today's uses).
+- **Honesty:** Bluesky and Mastodon are labelled worldwide and "not Instagram/YouTube/Indian audiences". Mastodon rows store no hashtag evidence, so they can never mark an Instagram or YouTube hashtag as observed. Violence/tragedy titles stay hidden from these lists.
+- **Rejected after checking:**
+  - YouTube channel RSS: `youtube.com/robots.txt` disallows `/feeds/videos.xml` for all crawlers.
+  - Invidious/Piped: they scrape YouTube.
+  - GDELT: heavy rate limits.
+  - Reddit: API terms and cloud-IP blocks.
+  - Instagram/TikTok scrapers: they need logins/cookies and break the platforms' terms.
+- **Speed:** Apple's feed sometimes takes 30 s or returns 504. The Trending page now waits only for Google and Wikipedia; every chart refreshes in the background via `after()` with 20 s and 2 attempts.
+- **Trending page:** India searches and reading (main), songs and podcasts (sidebar), and "Worldwide social chatter" (Bluesky + Mastodon) at the bottom.
+- **Tests:** 111 unit (new `tests/social.test.ts`), 9/9 E2E.
+
 ## Next steps
 - Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.
 - Set `ADMIN_EMAILS` on Render to the owner's email.

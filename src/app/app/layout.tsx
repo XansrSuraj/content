@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   if (!profile?.onboardedAt) redirect("/onboarding");
   const n = d.nav;
   // Keeps every enabled source fresh while people use the app — no cron or setup needed.
-  after(() => refreshIfStale(db, new Date(), undefined, 20_000).catch(() => undefined));
+  after(() => refreshIfStale(db, new Date(), undefined, 20_000, 2).catch(() => undefined));
 
   const items: NavItem[] = [
     { href: "/app", label: n.home, icon: "home", mobile: true },

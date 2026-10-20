@@ -66,6 +66,9 @@ export interface AppConfig {
     youtubeApiKeyPresent: boolean;
     googleTrendsRssEnabled: boolean;
     appleMusicEnabled: boolean;
+    applePodcastsEnabled: boolean;
+    blueskyEnabled: boolean;
+    mastodonEnabled: boolean;
     /** User-Agent for keyless public feeds. */
     userAgent: string;
   };
@@ -157,6 +160,9 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       youtubeApiKeyPresent: Boolean(env.YOUTUBE_API_KEY?.trim()),
       googleTrendsRssEnabled: bool(env.SOURCE_GOOGLE_TRENDS_RSS_ENABLED, keylessDefault),
       appleMusicEnabled: bool(env.SOURCE_APPLE_MUSIC_ENABLED, keylessDefault),
+      applePodcastsEnabled: bool(env.SOURCE_APPLE_PODCASTS_ENABLED, keylessDefault),
+      blueskyEnabled: bool(env.SOURCE_BLUESKY_ENABLED, keylessDefault),
+      mastodonEnabled: bool(env.SOURCE_MASTODON_ENABLED, keylessDefault),
       userAgent: env.TRENDSAATHI_USER_AGENT?.trim() || `TrendSaathi/0.1 (+${env.APP_URL || "http://localhost:3000"})`,
     },
     ingestSecretPresent: (env.INGEST_SECRET?.length ?? 0) >= 32,

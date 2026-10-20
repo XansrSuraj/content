@@ -48,6 +48,8 @@ export function metricText(name: string | null, value: number | null): string | 
   if (value == null) return null;
   if (name === "approx_traffic") return `Google approx. searches ${value.toLocaleString("en-IN")}+`;
   if (name === "views_ceil") return `Wikipedia views ${value.toLocaleString("en-IN")} (rounded up)`;
+  if (name === "bluesky_posts") return `${value.toLocaleString("en-IN")} Bluesky posts`;
+  if (name === "mastodon_uses_today") return `${value.toLocaleString("en-IN")} uses today`;
   return null;
 }
 
@@ -98,6 +100,7 @@ export async function refreshIfStale(
   now: Date = new Date(),
   keys: readonly string[] = INGESTIBLE_KEYS,
   timeoutMs = 6_000,
+  attempts = 1,
 ): Promise<void> {
   const cfg = config();
   const rows = new Map((await db.select().from(sources)).map((r) => [r.key, r]));
@@ -110,7 +113,7 @@ export async function refreshIfStale(
     if (row?.lastRunAt && now.getTime() - row.lastRunAt.getTime() < RETRY_AFTER_FAILURE_MINUTES * 60_000) return null;
     let job = inflight.get(key);
     if (!job) {
-      job = runIngestion(db, connector, { trigger: "scheduled", attempts: 1, timeoutMs, now })
+      job = runIngestion(db, connector, { trigger: "scheduled", attempts, timeoutMs, now })
         .catch(() => undefined)
         .finally(() => inflight.delete(key));
       inflight.set(key, job);
@@ -164,7 +167,8 @@ export interface TrendingNowItem {
 
 /** Fresh real observations for the "Trending now" page, newest first, one row per title. */
 export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ items: TrendingNowItem[]; hidden: number }> {
-  await refreshIfStale(db, now);
+  // Only wait for the fast sources this list shows; slower charts refresh in the background (app layout).
+  await refreshIfStale(db, now, CONTEXT_SOURCES);
   const since = new Date(now.getTime() - MAX_AGE_HOURS * 3_600_000);
   const rows = await db
     .select()
@@ -224,16 +228,25 @@ export interface TopSong {
 }
 
 /** The latest Apple Music India chart that was fetched (one batch, in chart order). */
-export async function topSongs(db: DB, limit = 20): Promise<TopSong[]> {
+export function topSongs(db: DB, limit = 20): Promise<BatchItem[]> {
+  return latestBatch(db, "apple_music_top_in", limit);
+}
+
+export interface BatchItem extends TopSong {
+  metric: string | null;
+}
+
+/** The most recent fetch of one source, in its own rank order; sensitive titles are left out. */
+export async function latestBatch(db: DB, sourceKey: string, limit = 20): Promise<BatchItem[]> {
   const rows = await db
     .select()
     .from(sourceObservations)
-    .where(eq(sourceObservations.sourceKey, "apple_music_top_in"))
+    .where(eq(sourceObservations.sourceKey, sourceKey))
     .orderBy(desc(sourceObservations.retrievedAt), sourceObservations.rank)
     .limit(100);
   const latest = rows[0]?.retrievedAt.getTime();
   return rows
-    .filter((r) => r.retrievedAt.getTime() === latest)
+    .filter((r) => r.retrievedAt.getTime() === latest && !needsReview(r.title))
     .slice(0, limit)
-    .map((r) => ({ id: r.id, title: r.title, url: r.url, rank: r.rank, observedAt: r.observedAt }));
+    .map((r) => ({ id: r.id, title: r.title, url: r.url, rank: r.rank, observedAt: r.observedAt, metric: metricText(r.metricName, r.metricValue) }));
 }
