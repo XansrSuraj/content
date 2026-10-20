@@ -735,6 +735,22 @@ export const en = {
     sportNames: { cricket: "Cricket", football: "Football" } as Record<string, string>,
     labelsExplain: "Platform trend = direct evidence on that platform · Search interest rising = matches a current Google search · Relevant suggestion = fits your content; trend status not verified.",
   },
+  evidence: {
+    title: "Evidence used",
+    cats: {
+      match_fact: "Verified match facts",
+      search_interest: "Search interest",
+      platform_observation: "Platform observations",
+      creator_reference: "Your references",
+      generated_suggestion: "Generated suggestions",
+    } as Record<string, string>,
+    observed: "observed",
+    checked: "checked",
+    origin: { auto: "automatic", creator: "added by you", admin: "admin-observed" } as Record<string, string>,
+    noTrendTitle: "No relevant current trend found",
+    leftOut: (n: number) => `Left out (${n})`,
+    leftOutHint: "Items that looked related but failed a relevance check — they were not given to the AI.",
+  },
   options: {
     categories: {
       tech: "Tech & gadgets",

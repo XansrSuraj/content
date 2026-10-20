@@ -734,6 +734,22 @@ export const hindi: Dict = {
     sportNames: { cricket: "क्रिकेट", football: "फ़ुटबॉल" } as Record<string, string>,
     labelsExplain: "प्लेटफ़ॉर्म ट्रेंड = उसी प्लेटफ़ॉर्म पर सीधा सबूत · सर्च रुचि बढ़ रही = अभी की Google सर्च से मेल · प्रासंगिक सुझाव = आपके कंटेंट से मेल; ट्रेंड स्थिति सत्यापित नहीं।",
   },
+  evidence: {
+    title: "इस्तेमाल हुआ सबूत",
+    cats: {
+      match_fact: "सत्यापित मैच जानकारी",
+      search_interest: "सर्च रुचि",
+      platform_observation: "प्लेटफ़ॉर्म पर देखा गया",
+      creator_reference: "आपके संदर्भ",
+      generated_suggestion: "बनाए गए सुझाव",
+    } as Record<string, string>,
+    observed: "देखा गया",
+    checked: "जाँचा गया",
+    origin: { auto: "स्वचालित", creator: "आपने डाला", admin: "एडमिन ने देखा" } as Record<string, string>,
+    noTrendTitle: "कोई प्रासंगिक मौजूदा ट्रेंड नहीं मिला",
+    leftOut: (n: number) => `छोड़ा गया (${n})`,
+    leftOutHint: "ये संबंधित लग रहे थे लेकिन प्रासंगिकता जाँच में विफल रहे — AI को नहीं दिए गए।",
+  },
   options: {
     categories: {
       tech: "टेक और गैजेट",

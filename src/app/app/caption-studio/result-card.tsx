@@ -9,6 +9,7 @@ import { Check, ChevronDown, ChevronUp, CircleAlert, Dot, Pencil } from "lucide-
 import { useI18n } from "@/components/i18n-provider";
 import { CopyButton } from "@/components/copy-button";
 import { SportsPanel, type SportsPanelHandle } from "./sports-panel";
+import { EvidenceSection } from "./evidence-section";
 import { Badge, Button, Card, Textarea, cx, formatDateTime } from "@/components/ui";
 
 const MODE_TONE = {
@@ -158,7 +159,7 @@ export function ResultCard({
               </Section>
             )}
 
-            <TrendContextSection items={message.contextUsed} />
+            {message.evidence ? <EvidenceSection bundle={message.evidence} /> : <TrendContextSection items={message.contextUsed} />}
 
             <HashtagSection result={result} statuses={message.hashtags} platformId={platformId} />
 

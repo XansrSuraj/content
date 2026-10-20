@@ -25,7 +25,7 @@ import {
   type Message,
 } from "@/lib/repo/studio";
 import { checkAiQuota } from "@/lib/security/rate-limit";
-import { findTrendContext, trendContextNotes } from "./trend-context";
+import { buildEvidence } from "./evidence";
 import { buildSportsContext } from "./sports-context";
 
 export const CaptionTurnSchema = z.object({
@@ -135,14 +135,24 @@ ${input.message}`;
     publishAt: context.publishAt,
     timeZone: profile?.sports?.timezone || "Asia/Kolkata",
   });
-  const trendItems = context.useTrends
-    ? await findTrendContext(db, `${conversationText}
-${sports.trendTerms}`, { includeDemo: user.isDemo && cfg.demoEnabled })
-    : [];
+  // Search interest, platform observations and references — gated for relevance, from cached data only.
+  const evidence = await buildEvidence(db, user.id, {
+    text: `${conversationText}
+${sports.trendTerms}`,
+    intent: sports.intent,
+    match: sports.match,
+    stage: sports.stage,
+    publishAt: context.publishAt ? new Date(context.publishAt) : null,
+    region: context.region,
+    useTrends: context.useTrends,
+    includeDemo: user.isDemo && cfg.demoEnabled,
+  });
+  if (sports.used) sports.used.references = evidence.references;
+  const trendItems = evidence.trendItems;
   const evidenceNotes = [
     ...(opportunityId ? await opportunityNotes(db, user, opportunityId) : []),
     ...sports.notes,
-    ...trendContextNotes(trendItems),
+    ...evidence.notes,
   ];
 
   const started = Date.now();
@@ -202,6 +212,7 @@ ${sports.trendTerms}`, { includeDemo: user.isDemo && cfg.demoEnabled })
     mode: output.mode,
     contextUsed: trendItems,
     sports: sports.used,
+    evidence: evidence.bundle,
   }))!;
 
   await recordUsage(db, {

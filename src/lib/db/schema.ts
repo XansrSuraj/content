@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { EvidenceBundle } from "@/lib/domain/evidence";
 
 const id = () => text("id").primaryKey().$defaultFn(() => crypto.randomUUID());
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -268,6 +269,8 @@ export const messages = pgTable(
     contextUsed: jsonb("context_used").$type<TrendContextItem[]>(),
     /** Match facts, intent and references given to the model for this answer (shown to the creator). */
     sports: jsonb("sports").$type<SportsContextUsed>(),
+    /** Gated evidence bundle (categories kept separate) for this answer. */
+    evidence: jsonb("evidence").$type<EvidenceBundle>(),
     createdAt: createdAt(),
   },
   (t) => [index("msg_conv_idx").on(t.conversationId, t.createdAt)],

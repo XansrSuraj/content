@@ -734,6 +734,22 @@ export const hinglish: Dict = {
     sportNames: { cricket: "Cricket", football: "Football" } as Record<string, string>,
     labelsExplain: "Platform trend = us platform par seedha evidence · Search interest rising = abhi ki Google search se match · Relevant suggestion = content se match; trend status verify nahi.",
   },
+  evidence: {
+    title: "Use hua evidence",
+    cats: {
+      match_fact: "Verified match facts",
+      search_interest: "Search interest",
+      platform_observation: "Platform observations",
+      creator_reference: "Aapke references",
+      generated_suggestion: "Generated suggestions",
+    } as Record<string, string>,
+    observed: "dekha gaya",
+    checked: "check hua",
+    origin: { auto: "automatic", creator: "aapne daala", admin: "admin ne dekha" } as Record<string, string>,
+    noTrendTitle: "Koi relevant current trend nahi mila",
+    leftOut: (n: number) => `Chhoda gaya (${n})`,
+    leftOutHint: "Ye related lag rahe the par relevance check fail hua — AI ko nahi diye gaye.",
+  },
   options: {
     categories: {
       tech: "Tech & gadgets",

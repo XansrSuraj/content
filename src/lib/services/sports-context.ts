@@ -1,13 +1,12 @@
 import "server-only";
 import type { DB } from "@/lib/db/client";
-import type { MatchSnapshot, ReferenceSnapshot, SportsContextUsed } from "@/lib/db/schema";
+import type { MatchSnapshot, SportsContextUsed } from "@/lib/db/schema";
 import { TEAM_BY_ID, PLAYERS } from "@/lib/domain/sports/entities";
-import { parseSportsIntent } from "@/lib/domain/sports/intent";
-import { matchStage, resolveMatch, STAGE_GUIDANCE, type MatchRecord } from "@/lib/domain/sports/resolve";
+import { parseSportsIntent, type SportsIntent } from "@/lib/domain/sports/intent";
+import { matchStage, resolveMatch, STAGE_GUIDANCE, writingStage, type MatchRecord, type MatchStage } from "@/lib/domain/sports/resolve";
 import { refreshSportsIfStale } from "@/lib/jobs/sports-ingest";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
-import { getMatch, listMatchesFor, listReferencesFor, type ReferenceRow } from "@/lib/repo/sports";
-import { tokens } from "./trend-context";
+import { getMatch, listMatchesFor } from "@/lib/repo/sports";
 
 const PROVIDER_LABEL: Record<string, string> = {
   openfootball: "openfootball fixture list (schedule only, no live status)",
@@ -51,32 +50,15 @@ export function matchNotes(s: MatchSnapshot, timeZone: string, publishAt: Date |
   return notes;
 }
 
-function referenceNote(r: ReferenceSnapshot): string {
-  const when = r.observedAt.slice(0, 10);
-  if (r.evidenceType === "creator_reference") return `REFERENCE (creator-provided, not verified): ${r.platform} — "${r.topic}"${r.url ? ` — ${r.url}` : ""} (added ${when})`;
-  if (r.evidenceType === "csv_import") return `SEARCH DATA (${r.sourceTool}, imported ${when}): related query "${r.topic}" on ${r.platform}`;
-  return `PLATFORM TOOL OBSERVATION (${r.sourceTool}, seen by an admin on ${when}): "${r.topic}" on ${r.platform}`;
-}
 
-function toReference(r: ReferenceRow): ReferenceSnapshot {
-  return { platform: r.platform, topic: r.topic, url: r.url, evidenceType: r.evidenceType, sourceTool: r.sourceTool, observedAt: r.observedAt.toISOString() };
-}
 
-/** References whose topic shares a meaningful word with the caption (or appears whole). */
-export function matchingReferences(text: string, refs: ReferenceRow[], extraTerms: string[] = [], limit = 4): ReferenceRow[] {
-  const words = new Set([...tokens(text), ...extraTerms.flatMap((t) => tokens(t))]);
-  const lowered = text.toLowerCase();
-  return refs
-    .filter((r) => {
-      const topic = r.topic.toLowerCase();
-      return lowered.includes(topic) || tokens(topic).some((w) => w.length >= 4 && words.has(w));
-    })
-    .slice(0, limit);
-}
 
 export interface SportsContextResult {
   used: SportsContextUsed | null;
   notes: string[];
+  intent: SportsIntent;
+  match: MatchRecord | null;
+  stage: MatchStage | null;
   /** Extra text for the search-trend matcher, e.g. "India vs Australia ind vs aus". */
   trendTerms: string;
 }
@@ -89,7 +71,6 @@ export async function buildSportsContext(
   const now = opts.now ?? new Date();
   const intent = parseSportsIntent(opts.text);
   const publishAt = opts.publishAt ? new Date(opts.publishAt) : null;
-  const refs = await listReferencesFor(db, userId, now);
 
   let match: MatchRecord | null = null;
   let candidates: MatchRecord[] = [];
@@ -105,14 +86,12 @@ export async function buildSportsContext(
 
   const teamNames = intent.teamIds.map((id) => TEAM_BY_ID.get(id)?.name ?? id);
   const teamShort = intent.teamIds.map((id) => TEAM_BY_ID.get(id)?.short ?? "");
-  const extraTerms = match ? [match.homeName, match.awayName, match.competition] : teamNames;
-  const references = matchingReferences(opts.text, refs, extraTerms).map(toReference);
 
-  if (!intent.sport && !match) {
-    return { used: references.length ? emptyUsed(references, opts.publishAt) : null, notes: references.map(referenceNote), trendTerms: "" };
-  }
+  if (!intent.sport && !match) return { used: null, notes: [], trendTerms: "", intent, match: null, stage: null };
 
-  const snap = match ? snapshot(match, now) : null;
+  // Stage the caption is written for: posting after kick-off with an unknown result → neutral.
+  const stage = match ? writingStage(match, now, publishAt) : null;
+  const snap = match ? { ...snapshot(match, now), stage: stage! } : null;
   const notes: string[] = [];
   if (snap) notes.push(...matchNotes(snap, opts.timeZone, publishAt));
   else if (candidates.length) {
@@ -122,7 +101,6 @@ export async function buildSportsContext(
   } else {
     notes.push("SPORTS CAPTION, NO VERIFIED FIXTURE: do not state match dates, results, scores, playing XI, injuries or records. Keep to what the caption says.");
   }
-  notes.push(...references.map(referenceNote));
 
   const used: SportsContextUsed = {
     sport: intent.sport ?? (match ? match.sport : null),
@@ -132,16 +110,14 @@ export async function buildSportsContext(
     timeRef: intent.timeRef,
     match: snap,
     candidates: candidates.map((c) => snapshot(c, now)),
-    references,
+    // Filled from the gated evidence bundle by the caller.
+    references: [],
     publishAt: opts.publishAt,
   };
   const vs = match ? `${match.homeName} vs ${match.awayName}` : teamNames.join(" vs ");
   const shortVs = teamShort.filter(Boolean).join(" vs ");
-  return { used, notes, trendTerms: `${vs} ${shortVs}`.trim() };
+  return { used, notes, trendTerms: `${vs} ${shortVs}`.trim(), intent, match, stage };
 }
 
-function emptyUsed(references: ReferenceSnapshot[], publishAt: string | null): SportsContextUsed {
-  return { sport: null, teams: [], players: [], contentType: "unknown", timeRef: null, match: null, candidates: [], references, publishAt };
-}
 
 export const SPORTS_SOURCE_NAME = (provider: string) => SOURCE_NAMES[provider] ?? PROVIDER_LABEL[provider] ?? provider;

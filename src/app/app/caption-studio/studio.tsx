@@ -147,7 +147,7 @@ export function Studio(props: {
     // Optimistic: the creator's message appears immediately.
     setMessages((m) => [
       ...m,
-      { id: tempId, role: "user", text, mode: null, result: null, hashtags: [], contextUsed: null, sports: null, createdAt: new Date().toISOString() },
+      { id: tempId, role: "user", text, mode: null, result: null, hashtags: [], contextUsed: null, sports: null, evidence: null, createdAt: new Date().toISOString() },
     ]);
     setDraft("");
     setPending(true);

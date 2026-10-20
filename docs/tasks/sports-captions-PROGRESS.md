@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 3 — Evidence bundle + relevance gates (Phases 0–2 done)
+**Current phase:** 4 — Platform adapters + generation pipeline (Phases 0–3 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-20
 
@@ -219,3 +219,27 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
   - Status follows authority (live-status provider > schedule-only > creator), so community data can never override football-data.org's live status.
 - **Failure handling:** a failed refresh keeps last-known-good rows and `last_success_at`; an empty response counts as a success with 0 items.
 - **Tests:** 168 unit tests passing (new `tests/sports-providers.test.ts`).
+
+## Phase 3 — Evidence bundle + relevance gates: DONE (2026-10-20)
+- **Categories** (`src/lib/domain/evidence.ts`): `match_fact`, `search_interest`, `platform_observation`, `creator_reference`, `generated_suggestion` (the model's hashtags, shown in the hashtag section).
+- **Fields on every evidence item:** source, source URL, platform, region, language, metric {name, value, **scope** — what the number actually measures}, observed_at, checked_at, expires_at, origin (auto/creator/admin), related entities (match/teams/players/competition).
+- The bundle is stored per answer in `messages.evidence` (migration `0005`) and shown grouped by category in the new "Evidence used" section.
+- **Metric scopes, stated honestly:**
+  - Google = "web searches in India, approximate bucket";
+  - Wikipedia = "pageviews from India for one UTC day, rounded up";
+  - Mastodon = "mastodon.social only";
+  - Bluesky = "Bluesky only".
+- **Relevance gates** (`gateEvidence`), all of which must pass:
+  1. not expired at the posting time;
+  2. not too old for the posting time (Google 48 h, Wikipedia 72 h, references 14 days);
+  3. audience region;
+  4. charts/social (Apple Music/Podcasts, Bluesky, Mastodon) only when the caption names that exact item;
+  5. sports: same entity (team, player or competition), and no extra team or player — this is what rejects an unrelated star or another team's tag on an RCB vs MI caption;
+  6. never an unverifiable claim (injury, lineup, transfer, record…);
+  7. result-type claims only with a verified, completed provider match.
+- Keyword overlap alone never passes for sports captions, which are matched on entities.
+- **Rejected items** that looked related are listed under "Left out (n)" with the reason, and are never sent to the model.
+- **No relevant trend:** "No relevant current trend found" plus the reason (turned off / left out because … / nothing about this subject).
+- **References:** they moved from `sports-context` into the bundle. A creator's reference topic is read in the caption's sport. Search titles keep strict reading, so "India at the Asian Para Games" can't attach to a cricket caption.
+- The caption path reads search data from the cache only (no refresh call), and `match notes` now use `writingStage` (posting time).
+- **Tests:** 175 unit tests passing (new `tests/evidence.test.ts`); E2E 10/10.

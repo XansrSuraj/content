@@ -3,6 +3,7 @@ import type { CaptionResult, GenerationMode } from "@/lib/domain/captions";
 import { CaptionResultSchema } from "@/lib/domain/captions";
 import type { Message } from "@/lib/repo/studio";
 import type { SportsContextUsed, TrendContextItem } from "@/lib/db/schema";
+import type { EvidenceBundle } from "@/lib/domain/evidence";
 
 /** Plain JSON shapes sent to the client (dates as ISO strings). */
 export interface ClientHashtagStatus {
@@ -30,6 +31,8 @@ export interface ClientMessage {
   contextUsed: TrendContextItem[] | null;
   /** Match facts, intent and references used for this answer; null when none applied. */
   sports: SportsContextUsed | null;
+  /** Gated evidence bundle; null for answers made before evidence bundles existed. */
+  evidence: EvidenceBundle | null;
   createdAt: string;
 }
 
@@ -63,6 +66,7 @@ export function toClientMessage(m: Message, hashtags: HashtagStatus[] = []): Cli
     hashtags: toClientHashtags(hashtags),
     contextUsed: m.contextUsed ?? null,
     sports: m.sports ?? null,
+    evidence: m.evidence ?? null,
     createdAt: m.createdAt.toISOString(),
   };
 }

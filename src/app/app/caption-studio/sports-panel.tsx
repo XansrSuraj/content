@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { CalendarClock, ExternalLink, Link2, RefreshCw, Trophy } from "lucide-react";
+import { CalendarClock, RefreshCw, Trophy } from "lucide-react";
 import type { MatchSnapshot, SportsContextUsed } from "@/lib/db/schema";
 import { useI18n } from "@/components/i18n-provider";
 import { Badge, Button, Input, Notice, Select, formatDateTime } from "@/components/ui";
@@ -48,7 +48,7 @@ export const SportsPanel = forwardRef<
     return () => window.removeEventListener("focus", check);
   }, [check]);
 
-  if (!sports.sport && !match && sports.references.length === 0) return null;
+  if (!sports.sport && !match) return null;
   const changed = match && current && current.stage !== match.stage;
 
   return (
@@ -112,27 +112,6 @@ export const SportsPanel = forwardRef<
         )
       )}
 
-      {sports.references.length > 0 && (
-        <div className="mt-3">
-          <p className="text-xs font-semibold">{t.references}</p>
-          <ul className="mt-1 space-y-1 text-xs">
-            {sports.references.map((r, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-1.5">
-                <Link2 aria-hidden className="h-3 w-3 text-muted" />
-                <span className="font-medium">{r.topic}</span>
-                <span className="text-muted">
-                  · {r.platform} · {r.evidenceType === "creator_reference" ? t.refCreator : t.refTool(r.sourceTool)}
-                </span>
-                {r.url && (
-                  <a href={r.url} target="_blank" rel="noopener noreferrer nofollow" className="text-brand" aria-label={r.topic}>
-                    <ExternalLink aria-hidden className="h-3 w-3" />
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 });
