@@ -136,7 +136,6 @@ export async function refreshIfStale(
 
 export async function findTrendContext(db: DB, text: string, opts: { includeDemo: boolean; now?: Date }): Promise<TrendContextItem[]> {
   const now = opts.now ?? new Date();
-  await refreshIfStale(db, now, CONTEXT_SOURCES);
   const since = new Date(now.getTime() - MAX_AGE_HOURS * 3_600_000);
   const keys = opts.includeDemo ? [...CONTEXT_SOURCES, ...DEMO_SOURCES] : CONTEXT_SOURCES;
   const rows = await db
@@ -178,8 +177,7 @@ export interface TrendingNowItem {
 
 /** Fresh real observations for the "Trending now" page, newest first, one row per title. */
 export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ items: TrendingNowItem[]; hidden: number }> {
-  // Only wait for the fast sources this list shows; slower charts refresh in the background (app layout).
-  await refreshIfStale(db, now, CONTEXT_SOURCES);
+  // Last-known-good data only: refreshes run in the background (app layout + scheduled job), never in this request.
   const since = new Date(now.getTime() - MAX_AGE_HOURS * 3_600_000);
   const rows = await db
     .select()

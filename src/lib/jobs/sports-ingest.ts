@@ -15,6 +15,7 @@ import {
 import { SourceFetchError } from "@/lib/providers/trends/types";
 import { purgeOldMatches, upsertMatches } from "@/lib/repo/sports";
 import { reserveCalls, usageToday } from "@/lib/repo/provider-usage";
+import { acquireLock, backoffMs, pausedUntil, recordFailure, recordSuccess, releaseLock, retryable } from "./guard";
 import { EXPECTED_DURATION_H } from "@/lib/domain/sports/resolve";
 import type { Sport } from "@/lib/domain/sports/entities";
 
@@ -73,7 +74,7 @@ export async function dueIntervalMinutes(db: DB, provider: MatchProvider, now: D
 export async function runSportsIngestion(
   db: DB,
   provider: MatchProvider,
-  opts: { now?: Date; timeoutMs?: number; force?: boolean } = {},
+  opts: { now?: Date; timeoutMs?: number; force?: boolean; attempts?: number; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<SportsIngestResult> {
   const now = opts.now ?? new Date();
   const key = provider.key;
@@ -82,31 +83,52 @@ export async function runSportsIngestion(
   if (!opts.force && src?.lastSuccessAt && now.getTime() - src.lastSuccessAt.getTime() < (await dueIntervalMinutes(db, provider, now)) * 60_000) {
     return { sourceKey: key, status: "skipped", matches: 0 };
   }
-  const quota = await reserveCalls(db, key, provider.callsPerList, provider.budget, now);
-  if (!quota.ok) return { sourceKey: key, status: "skipped", matches: 0, error: "Budget reached (day or minute)" };
-
-  const [run] = await db.insert(ingestionRuns).values({ sourceKey: key, status: "running", trigger: "scheduled" }).returning();
+  const paused = opts.force ? null : pausedUntil(src, now);
+  if (paused) return { sourceKey: key, status: "skipped", matches: 0, error: `Paused until ${paused.toISOString()}` };
+  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const attempts = opts.attempts ?? 2;
+  if (!(await acquireLock(db, key, timeoutMs * attempts + 10_000, now))) return { sourceKey: key, status: "skipped", matches: 0, error: "Already running" };
   try {
-    const range = { from: new Date(now.getTime() - 10 * 86_400_000), to: new Date(now.getTime() + 14 * 86_400_000) };
-    const rows = await provider.listFixtures(range, AbortSignal.timeout(opts.timeoutMs ?? 20_000), now);
-    const n = await upsertMatches(db, rows);
-    await purgeOldMatches(db, new Date(now.getTime() - 14 * 86_400_000));
-    await db.update(ingestionRuns).set({ status: "success", attempts: 1, finishedAt: new Date(), itemsFetched: rows.length, itemsNew: n }).where(eq(ingestionRuns.id, run.id));
-    await db.update(sources).set({ lastRunAt: now, lastSuccessAt: now, lastError: null }).where(eq(sources.key, key));
-    return { sourceKey: key, status: "success", matches: n };
-  } catch (err) {
+    const started = Date.now();
+    const [run] = await db.insert(ingestionRuns).values({ sourceKey: key, status: "running", trigger: "scheduled" }).returning();
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      // Every attempt spends real calls, so each one reserves budget first.
+      const quota = await reserveCalls(db, key, provider.callsPerList, provider.budget, now);
+      if (!quota.ok) {
+        await db.update(ingestionRuns).set({ status: "skipped", attempts: attempt - 1, finishedAt: new Date(), error: "Budget reached" }).where(eq(ingestionRuns.id, run.id));
+        return { sourceKey: key, status: "skipped", matches: 0, error: "Budget reached (day or minute)" };
+      }
+      try {
+        const range = { from: new Date(now.getTime() - 10 * 86_400_000), to: new Date(now.getTime() + 14 * 86_400_000) };
+        const rows = await provider.listFixtures(range, AbortSignal.timeout(timeoutMs), now);
+        const n = await upsertMatches(db, rows);
+        await purgeOldMatches(db, new Date(now.getTime() - 14 * 86_400_000));
+        await db.update(ingestionRuns).set({ status: "success", attempts: attempt, finishedAt: new Date(), itemsFetched: rows.length, itemsNew: n }).where(eq(ingestionRuns.id, run.id));
+        await recordSuccess(db, key, now, Date.now() - started);
+        return { sourceKey: key, status: "success", matches: n };
+      } catch (err) {
+        lastErr = err;
+        if (!retryable(err) || attempt === attempts) break;
+        await (opts.sleep ?? defaultSleep)(backoffMs(attempt));
+      }
+    }
     const msg =
-      err instanceof RateLimitedError
-        ? `Rate limited${err.retryAfterSeconds !== null ? ` (retry after ${err.retryAfterSeconds}s)` : ""}`
-        : err instanceof SourceFetchError || err instanceof Error
-          ? `${err.name}: ${err.message}`.slice(0, 300)
+      lastErr instanceof RateLimitedError
+        ? `Rate limited${lastErr.retryAfterSeconds !== null ? ` (retry after ${lastErr.retryAfterSeconds}s)` : ""}`
+        : lastErr instanceof SourceFetchError || lastErr instanceof Error
+          ? `${lastErr.name}: ${lastErr.message}`.slice(0, 300)
           : "Unknown error";
-    await db.update(ingestionRuns).set({ status: "failed", attempts: 1, finishedAt: new Date(), error: msg }).where(eq(ingestionRuns.id, run.id));
-    // Last-known-good data stays: only lastRunAt/lastError change on failure.
-    await db.update(sources).set({ lastRunAt: now, lastError: msg }).where(eq(sources.key, key));
+    await db.update(ingestionRuns).set({ status: "failed", attempts, finishedAt: new Date(), error: msg }).where(eq(ingestionRuns.id, run.id));
+    // Last-known-good matches stay; only the failure counters change (may open the circuit).
+    await recordFailure(db, key, now, msg, Date.now() - started, lastErr);
     return { sourceKey: key, status: "failed", matches: 0, error: msg };
+  } finally {
+    await releaseLock(db, key);
   }
 }
+
+const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const inflight = new Map<string, Promise<SportsIngestResult>>();
 const RETRY_AFTER_FAILURE_MINUTES = 5;

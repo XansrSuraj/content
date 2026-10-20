@@ -3,7 +3,8 @@ import type { AppConfig } from "@/lib/config";
 import type { DB } from "@/lib/db/client";
 import { ingestionRuns, sourceObservations, sources } from "@/lib/db/schema";
 import { SOURCE_NAMES, sourceStatus } from "@/lib/providers/trends/catalog";
-import { SourceFetchError, type FetchedObservation, type TrendSourceConnector } from "@/lib/providers/trends/types";
+import { type FetchedObservation, type TrendSourceConnector } from "@/lib/providers/trends/types";
+import { acquireLock, backoffMs, pausedUntil, recordFailure, recordSuccess, releaseLock, retryable } from "./guard";
 import { GoogleTrendsRssConnector } from "@/lib/providers/trends/google-trends-rss";
 import { WikimediaTopInConnector } from "@/lib/providers/trends/wikimedia";
 import { AppleChartConnector, AppleMusicTopConnector } from "@/lib/providers/trends/apple-music";
@@ -89,9 +90,33 @@ export async function runIngestion(db: DB, connector: TrendSourceConnector, opts
     return { sourceKey: key, status: "skipped", itemsFetched: 0, itemsNew: 0, purged: purged.length };
   }
 
+  // Circuit breaker and lock: a paused or already-running source is skipped (manual runs ignore the pause).
+  const paused = opts.force ? null : pausedUntil(src, now);
+  if (paused) return { sourceKey: key, status: "skipped", itemsFetched: 0, itemsNew: 0, purged: purged.length, error: `Paused until ${paused.toISOString()}` };
+  if (!(await acquireLock(db, key, timeoutMs * attempts + 10_000, now))) {
+    return { sourceKey: key, status: "skipped", itemsFetched: 0, itemsNew: 0, purged: purged.length, error: "Already running" };
+  }
+  try {
+    return await runLocked(db, connector, opts, { now, attempts, timeoutMs, sleep, purged: purged.length });
+  } finally {
+    await releaseLock(db, key);
+  }
+}
+
+async function runLocked(
+  db: DB,
+  connector: TrendSourceConnector,
+  opts: IngestOptions,
+  x: { now: Date; attempts: number; timeoutMs: number; sleep: (ms: number) => Promise<void>; purged: number },
+): Promise<IngestResult> {
+  const { now, attempts, timeoutMs, sleep } = x;
+  const key = connector.key;
+  const purged = { length: x.purged };
+  const started = Date.now();
   const [run] = await db.insert(ingestionRuns).values({ sourceKey: key, status: "running", trigger: opts.trigger }).returning();
 
   let lastError = "";
+  let lastErr: unknown = null;
   let made = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     made = attempt;
@@ -128,13 +153,13 @@ export async function runIngestion(db: DB, connector: TrendSourceConnector, opts
         .update(ingestionRuns)
         .set({ status: "success", attempts: attempt, finishedAt: new Date(), itemsFetched: fetched.length, itemsNew })
         .where(eq(ingestionRuns.id, run.id));
-      await db.update(sources).set({ lastRunAt: now, lastSuccessAt: now, lastError: null }).where(eq(sources.key, key));
+      await recordSuccess(db, key, now, Date.now() - started);
       return { sourceKey: key, status: "success", itemsFetched: fetched.length, itemsNew, purged: purged.length };
     } catch (err) {
-      const retryable = err instanceof SourceFetchError ? err.retryable : err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError" || err.name === "TypeError");
+      lastErr = err;
       lastError = err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 300) : "Unknown error";
-      if (!retryable || attempt === attempts) break;
-      await sleep(500 * 2 ** (attempt - 1));
+      if (!retryable(err) || attempt === attempts) break;
+      await sleep(backoffMs(attempt));
     }
   }
 
@@ -142,7 +167,8 @@ export async function runIngestion(db: DB, connector: TrendSourceConnector, opts
     .update(ingestionRuns)
     .set({ status: "failed", attempts: made, finishedAt: new Date(), error: lastError })
     .where(eq(ingestionRuns.id, run.id));
-  await db.update(sources).set({ lastRunAt: now, lastError: lastError }).where(eq(sources.key, key));
+  // Last-known-good observations stay; only the failure counters change (may open the circuit).
+  await recordFailure(db, key, now, lastError, Date.now() - started, lastErr);
   return { sourceKey: key, status: "failed", itemsFetched: 0, itemsNew: 0, purged: purged.length, error: lastError };
 }
 

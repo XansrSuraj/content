@@ -31,11 +31,29 @@ export class SourceFetchError extends Error {
   }
 }
 
+/** Thrown on HTTP 429; carries the provider's Retry-After so callers wait that long. */
+export class RateLimitedError extends SourceFetchError {
+  constructor(public retryAfterSeconds: number | null) {
+    super("HTTP 429 (rate limited)", true);
+    this.name = "RateLimitedError";
+  }
+}
+
+export function retryAfterSeconds(res: Response): number | null {
+  const v = res.headers.get("retry-after");
+  if (!v) return null;
+  const n = Number(v);
+  if (Number.isFinite(n)) return Math.max(0, n);
+  const at = Date.parse(v);
+  return Number.isNaN(at) ? null : Math.max(0, Math.round((at - Date.now()) / 1000));
+}
+
 export async function fetchText(url: string, init: RequestInit & { signal: AbortSignal }): Promise<string | null> {
   // credentials are never sent; feeds are fetched anonymously.
   const res = await fetch(url, { ...init, credentials: "omit", redirect: "follow" });
   if (res.status === 404) return null;
-  if (res.status === 429 || res.status >= 500) throw new SourceFetchError(`HTTP ${res.status}`, true);
+  if (res.status === 429) throw new RateLimitedError(retryAfterSeconds(res));
+  if (res.status >= 500) throw new SourceFetchError(`HTTP ${res.status}`, true);
   if (!res.ok) throw new SourceFetchError(`HTTP ${res.status}`, false);
   return res.text();
 }
@@ -43,7 +61,8 @@ export async function fetchText(url: string, init: RequestInit & { signal: Abort
 export async function fetchJson(url: string, init: RequestInit & { signal: AbortSignal }): Promise<unknown> {
   const res = await fetch(url, init);
   if (res.status === 404) return null;
-  if (res.status === 429 || res.status >= 500) throw new SourceFetchError(`HTTP ${res.status}`, true);
+  if (res.status === 429) throw new RateLimitedError(retryAfterSeconds(res));
+  if (res.status >= 500) throw new SourceFetchError(`HTTP ${res.status}`, true);
   if (!res.ok) throw new SourceFetchError(`HTTP ${res.status}`, false);
   return res.json();
 }

@@ -2,7 +2,9 @@ import { z } from "zod";
 import { TEAM_BY_ID, teamIdForName } from "@/lib/domain/sports/entities";
 import type { MatchStatus } from "@/lib/domain/sports/resolve";
 import type { MatchUpsert } from "@/lib/repo/sports";
-import { SourceFetchError } from "@/lib/providers/trends/types";
+import { RateLimitedError, SourceFetchError, retryAfterSeconds } from "@/lib/providers/trends/types";
+
+export { RateLimitedError };
 import type { Sport } from "@/lib/domain/sports/entities";
 
 /**
@@ -26,28 +28,11 @@ export interface MatchProvider {
   getMatch(providerId: string, signal: AbortSignal, now: Date): Promise<MatchUpsert | null>;
 }
 
-/** Thrown on HTTP 429; carries the provider's Retry-After so callers wait that long. */
-export class RateLimitedError extends SourceFetchError {
-  constructor(public retryAfterSeconds: number | null) {
-    super("HTTP 429 (rate limited)", true);
-    this.name = "RateLimitedError";
-  }
-}
-
-function retryAfter(res: Response): number | null {
-  const v = res.headers.get("retry-after");
-  if (!v) return null;
-  const n = Number(v);
-  if (Number.isFinite(n)) return Math.max(0, n);
-  const at = Date.parse(v);
-  return Number.isNaN(at) ? null : Math.max(0, Math.round((at - Date.now()) / 1000));
-}
-
 /** JSON GET with clear empty-vs-error semantics: 404 → null (empty), 429 → RateLimitedError, other errors throw. */
 export async function getJson(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }): Promise<unknown> {
   const res = await fetch(url, { ...init, credentials: "omit", redirect: "follow" });
   if (res.status === 404) return null;
-  if (res.status === 429) throw new RateLimitedError(retryAfter(res));
+  if (res.status === 429) throw new RateLimitedError(retryAfterSeconds(res));
   if (res.status >= 500) throw new SourceFetchError(`HTTP ${res.status}`, true);
   if (!res.ok) throw new SourceFetchError(`HTTP ${res.status}`, false);
   return res.json();

@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 7 — Resilience + scheduling (Phases 0–6 done)
+**Current phase:** 8 — UX flow (Phases 0–7 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-21
 
@@ -286,3 +286,22 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - **Repair:** for AI output (`live_ai` / `open_model`), up to **2** targeted repair calls. Each sends `<validation_issues>` (platform / option / field / problem / sentence) plus the previous answer; the attempt with the fewest issues is kept, and repair calls are recorded in usage.
 - **Fallback:** if issues remain, or for template/local output, `safeResult` removes only the failing sentences, trims over-long fields, drops filler/duplicate tags, never leaves a required field empty (falls back to the creator's own words) and adds a limitation note. `syncLegacyFields` re-derives the older fields.
 - **Tests:** 198 unit tests passing (new `tests/validate-output.test.ts` covering every spec validator case plus the repair loop); E2E 10/10.
+
+## Phase 7 — Resilience + scheduling: DONE (2026-10-21)
+- **Requests never wait on external sources.** Captions (Phase 4) and now the Trending page read last-known-good data from Postgres; tests assert that no `fetch` happens.
+- **`src/lib/jobs/guard.ts`**, used by trend and sports ingestion:
+  - DB lock (`sources.locked_until`), so a source is never refreshed twice at once, even across instances.
+  - Exponential backoff with ±50% jitter between attempts.
+  - 429 → `RateLimitedError` (now shared by trend feeds too): never retried immediately; the source is paused for exactly its Retry-After.
+  - Circuit breaker: after 3 consecutive failures the source pauses 30 min, doubling up to 6 h; a success resets it. Manual admin runs ignore the pause.
+  - `last_latency_ms`, `last_failure_at` and `consecutive_failures` are recorded (shown in admin diagnostics in Phase 9).
+- **No overwriting good cache:** a failure only changes counters, `last_error` and `paused_until`; `last_success_at` changes only on real success; empty ≠ error.
+- **Per-source independence:** each source runs its own job (parallel, separate lock and circuit); one failing source doesn't affect the others (tested).
+- **Freshness:** live status is trusted for 20 min, scheduled data for 48 h, final results long-term (`matchStage`); expired observations are gated out (Phase 3).
+- **Scheduler:** `.github/workflows/refresh-trends.yml` calls `POST /api/jobs/ingest` every 10 min, waits for a sleeping instance to wake (150 s timeout, one retry), prints only per-source statuses, and doesn't overlap runs.
+  - Checked: `INGEST_SECRET` is set on Render and ≥ 32 chars, so the endpoint is enabled (value not read out).
+  - **NEEDS OWNER:** add repo secrets `APP_URL` and `INGEST_SECRET`. Until then each run exits with "Secrets not set; skipping" (status: IMPLEMENTED, NOT YET RUNNING).
+  - Render free tier: a 10-min ping keeps the service awake ~744 h in a 31-day month (limit 750 h per workspace; https://render.com/docs/free) — so no second always-on free service in that workspace.
+  - GitHub may delay scheduled runs and disables schedules after 60 days without repo activity.
+- **Data scope:** public match/source data is shared; captions, evidence bundles and references stay user-scoped (isolation test added).
+- **Tests:** 207 unit tests passing (new `tests/resilience.test.ts`).

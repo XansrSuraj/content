@@ -1,14 +1,28 @@
-# Optional, free: refreshes trend data every 2 hours by calling the protected ingest endpoint.
-# The app also refreshes Google Trends on demand, so this only keeps data warm while nobody is using it.
-# Set repository secrets APP_URL (https://…) and INGEST_SECRET (same value as on the server).
+# Free external scheduler: refreshes trends and match data every 10 minutes by calling the
+# secret-protected ingest endpoint. The app also refreshes on page views, but Render's free
+# web service sleeps after 15 min without traffic, so this keeps data fresh while nobody is using it.
+#
+# Setup (owner, once): repo → Settings → Secrets and variables → Actions → New repository secret
+#   APP_URL        = https://trendsaathi.onrender.com
+#   INGEST_SECRET  = the same value as INGEST_SECRET in Render → Environment (32+ characters)
+# Without both secrets every run exits early with "Secrets not set; skipping."
+#
+# Budget: a 10-minute ping keeps one free Render service awake ~24/7 (≈744 h in a 31-day month,
+# under the 750 free instance hours per workspace). Do not add a second always-on free service
+# to the same Render workspace, or the hours run out. GitHub may delay scheduled runs under load
+# and disables schedules in public repos after 60 days without repository activity.
 name: Refresh trends
 on:
   schedule:
-    - cron: "15 */2 * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
+concurrency:
+  group: refresh-trends
+  cancel-in-progress: false
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Call ingest endpoint
         env:
@@ -16,4 +30,15 @@ jobs:
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
         run: |
           if [ -z "$APP_URL" ] || [ -z "$INGEST_SECRET" ]; then echo "Secrets not set; skipping."; exit 0; fi
-          curl -fsS --max-time 120 -X POST -H "Authorization: Bearer $INGEST_SECRET" "$APP_URL/api/jobs/ingest"
+          # First request may wake the sleeping service (~1 min), so allow a long timeout and one retry.
+          for attempt in 1 2; do
+            code=$(curl -sS -o /tmp/out.json -w "%{http_code}" --max-time 150 -X POST -H "Authorization: Bearer $INGEST_SECRET" "$APP_URL/api/jobs/ingest" || echo "000")
+            echo "attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then
+              # Print only per-source statuses, never the response headers or secrets.
+              python3 -c "import json;d=json.load(open('/tmp/out.json'));print([(r.get('sourceKey'),r.get('status')) for r in d.get('results',[])+d.get('sports',[])])" || true
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Ingest endpoint did not return 200"; exit 1

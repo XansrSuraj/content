@@ -83,6 +83,12 @@ export const sources = pgTable("sources", {
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
   lastError: text("last_error"),
+  /** Circuit breaker + lock (shared across instances). */
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+  pausedUntil: timestamp("paused_until", { withTimezone: true }),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  lastLatencyMs: integer("last_latency_ms"),
 });
 
 export const ingestionRuns = pgTable("ingestion_runs", {
