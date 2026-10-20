@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 10 — Manual reference imports (Phases 0–9 done)
+**Current phase:** Final — eval, deploy, live verification (Phases 0–10 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-21
 
@@ -330,3 +330,11 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - **Published-post feedback:** unchanged existing feature — manual links, the creator's own outcome rating and metrics, labelled "Manually entered by you · not platform data". Nothing claims a caption caused views.
 - **Admin diagnostics** per source: last success + cache age, last failure, latency, circuit state (closed / N recent failures / paused until …), and quota used/left today for budgeted fixtures providers. A "Creator actions (last 7 days, counts only)" card was added. Only setting names are shown, never values (tested with planted values).
 - **Tests:** 211 unit tests passing (new `tests/feedback-diagnostics.test.ts`).
+
+## Phase 10 — Manual reference imports: DONE (2026-10-21)
+- Already built earlier: Google Trends "related queries" CSV import (YouTube Search or Web Search), admin observations from TikTok Creative Center / Reddit Pro Trends / YouTube Studio Trends / Instagram Reels trends, and creator-provided Reel/audio/trend references.
+- **New:** `src/lib/domain/references.ts`, shared by the creator API and the admin form. A pasted URL alone is rejected (a description in words is required); links must be http(s).
+- **CSV validation:** only real Trends exports are imported (TOP/RISING section or "Category:" header), and only rows whose query has words.
+- **Labels everywhere:** "creator-provided — not verified" / "<tool> (admin-observed)"; never "live".
+- **Never used:** cookie scrapers, private endpoints, scraping mirrors or trial-only services.
+- **Tests:** 213 unit tests passing.

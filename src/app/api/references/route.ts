@@ -1,21 +1,9 @@
-import { z } from "zod";
 import { getDb } from "@/lib/db/client";
 import { json, mutation, requireApiUser } from "@/lib/api";
 import { addReferences, listMyReferences } from "@/lib/repo/sports";
+import { CreatorReferenceInput } from "@/lib/domain/references";
 
-const AddReference = z.object({
-  platform: z.enum(["instagram", "youtube", "tiktok", "facebook", "reddit", "x", "other"]),
-  topic: z.string().trim().min(2).max(120),
-  url: z
-    .string()
-    .trim()
-    .max(500)
-    .url()
-    .refine((u) => /^https?:\/\//i.test(u), "http(s) only")
-    .nullable()
-    .default(null),
-  note: z.string().trim().max(300).default(""),
-});
+const AddReference = CreatorReferenceInput;
 
 /**
  * A creator pastes a Reel, audio or trend they saw. Stored as a "creator-provided

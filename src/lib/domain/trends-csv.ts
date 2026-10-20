@@ -35,6 +35,11 @@ function splitCsvLine(line: string): string[] {
   return out.map((c) => c.trim());
 }
 
+/** A real Google Trends export has a TOP/RISING section or the "Category:" header line. */
+export function looksLikeTrendsCsv(text: string): boolean {
+  return /(^|\n)\s*"?(TOP|RISING|Category:|Top queries|Rising queries)/i.test(text.replace(/^﻿/, ""));
+}
+
 export function parseTrendsCsv(text: string, max = 100): TrendsCsvRow[] {
   const rows: TrendsCsvRow[] = [];
   let section: "top" | "rising" = "top";

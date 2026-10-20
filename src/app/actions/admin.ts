@@ -16,7 +16,8 @@ import { buildConnector, runIngestion } from "@/lib/jobs/ingest";
 import { createOpportunityFromObservations, setOpportunityStatus } from "@/lib/repo/discovery";
 import { cleanupOldDemoUsers } from "@/lib/demo/seed";
 import { addReferences, deleteSharedReference } from "@/lib/repo/sports";
-import { parseTrendsCsv } from "@/lib/domain/trends-csv";
+import { looksLikeTrendsCsv, parseTrendsCsv } from "@/lib/domain/trends-csv";
+import { ReferenceTopic, describesInWords } from "@/lib/domain/references";
 
 export async function runSourceNow(sourceKey: string): Promise<void> {
   await requireAdmin();
@@ -130,7 +131,7 @@ const SOURCE_TOOLS = ["TikTok Creative Center", "Reddit Pro Trends", "YouTube St
 const ToolObservation = z.object({
   platform: z.enum(["instagram", "youtube", "tiktok", "facebook", "reddit", "google_search"]),
   sourceTool: z.enum(SOURCE_TOOLS),
-  topic: z.string().trim().min(2).max(120),
+  topic: ReferenceTopic,
   region: z.string().trim().max(20).default("IN"),
   url: z.union([z.literal(""), z.string().url().max(500)]).default(""),
   observedAt: z.string().max(30).default(""),
@@ -167,7 +168,10 @@ export async function importTrendsCsv(formData: FormData): Promise<void> {
   const platform = formData.get("platform") === "google_search" ? "google_search" : "youtube";
   const region = String(formData.get("region") ?? "IN").slice(0, 20) || "IN";
   if (!(file instanceof File) || file.size === 0 || file.size > 200_000) redirect("/admin?ref=invalid#references");
-  const rows = parseTrendsCsv(await file.text());
+  // Validation: only real Trends exports (a TOP/RISING section or the "Category:" header) with usable rows.
+  const text = await file.text();
+  if (!looksLikeTrendsCsv(text)) redirect("/admin?ref=not_trends_csv#references");
+  const rows = parseTrendsCsv(text).filter((r) => describesInWords(r.query));
   if (!rows.length) redirect("/admin?ref=empty#references");
   const db = await getDb();
   const n = await addReferences(

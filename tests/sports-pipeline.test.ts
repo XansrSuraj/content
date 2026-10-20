@@ -224,3 +224,20 @@ describe("trend relevance", () => {
     expect(got).toEqual(["India–Pakistan cricket rivalry"]);
   });
 });
+
+describe("manual references", () => {
+  it("a pasted link alone is not accepted; a description is", async () => {
+    const { CreatorReferenceInput, describesInWords } = await import("@/lib/domain/references");
+    expect(describesInWords("https://www.instagram.com/reel/abc123/")).toBe(false);
+    expect(CreatorReferenceInput.safeParse({ platform: "instagram", topic: "https://www.instagram.com/reel/abc123/" }).success).toBe(false);
+    const ok = CreatorReferenceInput.safeParse({ platform: "instagram", topic: "RCB fans singing reel", url: "https://www.instagram.com/reel/abc123/" });
+    expect(ok.success).toBe(true);
+    expect(CreatorReferenceInput.safeParse({ platform: "instagram", topic: "Fans", url: "javascript:alert(1)" }).success).toBe(false);
+  });
+
+  it("only real Google Trends exports are imported", async () => {
+    const { looksLikeTrendsCsv } = await import("@/lib/domain/trends-csv");
+    expect(looksLikeTrendsCsv("Category: All categories\n\nTOP\nquery,value\nind vs aus,100")).toBe(true);
+    expect(looksLikeTrendsCsv("name,email\nx,y@z.com")).toBe(false);
+  });
+});
