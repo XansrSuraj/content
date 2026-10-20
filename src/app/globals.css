@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/* Semantic design tokens. Components use these names, never raw hex. */
+:root {
+  --canvas: #f7f6f2;
+  --surface: #ffffff;
+  --surface-2: #f1efe9;
+  --fg: #1c1b2e;
+  --muted: #5d5b6e;
+  --line: #e2dfd6;
+  --brand: #3b34b0;
+  --brand-fg: #ffffff;
+  --brand-soft: #ecebfb;
+  --brand-ink: #2c2690;
+  --accent: #c76a00;
+  --accent-soft: #fff1dc;
+  --ok: #17663a;
+  --ok-soft: #e3f4ea;
+  --warn: #8a5300;
+  --warn-soft: #fdf0d8;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --info: #1d4f8f;
+  --info-soft: #e6eefb;
+  --focus: #3b34b0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #121220;
+    --surface: #1b1b2c;
+    --surface-2: #24243a;
+    --fg: #ecebf5;
+    --muted: #a9a7bd;
+    --line: #34344d;
+    --brand: #8f88ff;
+    --brand-fg: #121220;
+    --brand-soft: #2a2852;
+    --brand-ink: #c3bfff;
+    --accent: #ffb350;
+    --accent-soft: #3a2a12;
+    --ok: #6fd69a;
+    --ok-soft: #173826;
+    --warn: #ffc76b;
+    --warn-soft: #3a2c10;
+    --danger: #ff8a80;
+    --danger-soft: #3d1a17;
+    --info: #8fb8ff;
+    --info-soft: #182a45;
+    --focus: #b0aaff;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --font-sans: var(--font-jakarta), var(--font-devanagari), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
