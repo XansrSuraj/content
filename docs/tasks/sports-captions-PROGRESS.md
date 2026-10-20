@@ -1,6 +1,6 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 9 — Feedback + diagnostics (Phases 0–8 done)
+**Current phase:** 10 — Manual reference imports (Phases 0–9 done)
 **Spec:** `docs/tasks/sports-captions.md`
 **Last updated:** 2026-10-21
 
@@ -322,3 +322,11 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - **Results:** platform tabs, recommended first, alternatives collapsed, hashtags in two groups, "why" shown, evidence collapsed ("Evidence used (n)") with the no-trend note visible, copy per field.
 - Generic tags (#match, #preview, #video…) were added to the filler list.
 - **Tests:** 208 unit; E2E 12/12. New `e2e/flow.spec.ts` runs the spec's flow on **desktop and mobile** (390 px): choose platforms → details → caption → answer the "which MI" question → correct intent via the chip → platform tabs → open alternatives → refine with a chip → copy; it also checks there's no horizontal overflow.
+
+## Phase 9 — Feedback + diagnostics: DONE (2026-10-21)
+- **Events** (ids and enums only, never caption text — tested by planting text and checking payloads):
+  - Server: `generation_succeeded` {conversationId, messageId, mode, platforms, matchAttached, repairs, safeFallback}; `match_corrected` {conversationId, field: sportOverride | intentOverride | matchId | aliasChoices}.
+  - Client, via `POST /api/events` (session, same-origin, only for the creator's own answers — `messageOwnedBy`): `recommended_copied` (any field of the recommended option), `hashtags_copied`, `caption_edited` (on save after a change), `marked_useful` / `marked_not_useful` (new thumbs buttons in the answer header, all 3 languages).
+- **Published-post feedback:** unchanged existing feature — manual links, the creator's own outcome rating and metrics, labelled "Manually entered by you · not platform data". Nothing claims a caption caused views.
+- **Admin diagnostics** per source: last success + cache age, last failure, latency, circuit state (closed / N recent failures / paused until …), and quota used/left today for budgeted fixtures providers. A "Creator actions (last 7 days, counts only)" card was added. Only setting names are shown, never values (tested with planted values).
+- **Tests:** 211 unit tests passing (new `tests/feedback-diagnostics.test.ts`).

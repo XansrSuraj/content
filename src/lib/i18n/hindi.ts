@@ -794,6 +794,12 @@ export const hindi: Dict = {
     questionTitle: (alias: string) => `“${alias}” से आपका मतलब कौन-सा है?`,
     answerMsg: (alias: string, name: string) => `“${alias}” से मेरा मतलब ${name} है।`,
   },
+  feedbackUi: {
+    question: "क्या यह काम का था?",
+    useful: "काम का",
+    notUseful: "काम का नहीं",
+    thanks: "धन्यवाद — नोट कर लिया।",
+  },
   options: {
     categories: {
       tech: "टेक और गैजेट",

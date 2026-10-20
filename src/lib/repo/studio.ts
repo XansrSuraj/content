@@ -90,6 +90,17 @@ export async function deleteConversation(db: DB, userId: string, id: string): Pr
   return rows.length > 0;
 }
 
+/** True when this message is in one of the user's own conversations. */
+export async function messageOwnedBy(db: DB, userId: string, messageId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .where(and(eq(messages.id, messageId), eq(conversations.userId, userId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function listMessages(db: DB, userId: string, conversationId: string): Promise<Message[]> {
   const conv = await getConversation(db, userId, conversationId);
   if (!conv) return [];

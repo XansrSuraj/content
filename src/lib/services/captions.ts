@@ -224,7 +224,9 @@ ${sports.trendTerms}`,
   let best = finish(output.data);
   let bestIssues = best.platforms.length ? validateResult(best, vctx) : [];
   const repairable = output.mode === "live_ai" || output.mode === "open_model";
+  let repairs = 0;
   for (let attempt = 0; attempt < MAX_REPAIRS && repairable && bestIssues.length && !opts.signal?.aborted; attempt++) {
+    repairs++;
     const repairStarted = Date.now();
     try {
       const again = await provider.generate({
@@ -284,6 +286,22 @@ ${sports.trendTerms}`,
     latencyMs: Date.now() - started,
   });
   await recordEvent(db, user.id, "caption_generated", { conversationId: conversation.id, mode: output.mode, live: aiKind === "live", local: aiKind === "local" });
+  await recordEvent(db, user.id, "generation_succeeded", {
+    conversationId: conversation.id,
+    messageId: assistantMessage.id,
+    mode: output.mode,
+    platforms: result.platforms.length || 1,
+    matchAttached: Boolean(sports.match),
+    repairs,
+    safeFallback: bestIssues.length > 0,
+  });
+  // The creator corrected what we understood (sport, intent, which team, which match).
+  for (const field of ["sportOverride", "intentOverride", "matchId"] as const) {
+    if (context[field] && context[field] !== base[field]) await recordEvent(db, user.id, "match_corrected", { conversationId: conversation.id, field });
+  }
+  if (JSON.stringify(context.aliasChoices) !== JSON.stringify(base.aliasChoices)) {
+    await recordEvent(db, user.id, "match_corrected", { conversationId: conversation.id, field: "aliasChoices" });
+  }
 
   return { ok: true, value: { conversationId: conversation.id, context, applied, userMessage, assistantMessage } };
 }

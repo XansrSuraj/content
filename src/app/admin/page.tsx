@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { sql, gte } from "drizzle-orm";
+import { and, gte, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { requireAdmin } from "@/lib/auth/session";
-import { usageRecords } from "@/lib/db/schema";
+import { events, usageRecords } from "@/lib/db/schema";
 import { INGESTIBLE_KEYS } from "@/lib/jobs/ingest";
 import { listAllOpportunitiesForAdmin, listObservations, listRuns } from "@/lib/repo/discovery";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
@@ -13,12 +13,19 @@ import { Badge, Button, Card, Input, LinkButton, Notice, PageHeader, Select, Tex
 
 export const metadata = { title: "Admin" };
 
+function ageText(d: Date): string {
+  const min = Math.round((Date.now() - d.getTime()) / 60_000);
+  return min < 90 ? `${min} min` : min < 48 * 60 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`;
+}
+
+const CREATOR_EVENTS = ["generation_succeeded", "match_corrected", "recommended_copied", "hashtags_copied", "caption_edited", "marked_useful", "marked_not_useful"];
+
 export default async function AdminPage(props: PageProps<"/admin">) {
   await requireAdmin();
   const sp = await props.searchParams;
   const db = await getDb();
   const since = daysAgo(7);
-  const [status, runs, observations, opps, usage, references, matchCount] = await Promise.all([
+  const [status, runs, observations, opps, usage, references, matchCount, eventCounts] = await Promise.all([
     providerStatus(db),
     listRuns(db, 15),
     listObservations(db, { limit: 60 }),
@@ -38,6 +45,11 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .orderBy(sql`1 desc`),
     listSharedReferences(db),
     countMatches(db),
+    db
+      .select({ type: events.type, n: sql<number>`count(*)::int` })
+      .from(events)
+      .where(and(gte(events.createdAt, since), inArray(events.type, CREATOR_EVENTS)))
+      .groupBy(events.type),
   ]);
 
   return (
@@ -61,7 +73,30 @@ export default async function AdminPage(props: PageProps<"/admin">) {
                 {s.stale && <Badge tone="warn">stale</Badge>}
               </div>
               {s.missing.length > 0 && <p className="mt-1 text-xs text-muted">Requires: {s.missing.join("; ")}</p>}
-              {s.lastSuccessAt && <p className="mt-1 text-xs">Last success: {formatDateTime(s.lastSuccessAt)}</p>}
+              <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-muted">Last success</dt>
+                <dd>{s.lastSuccessAt ? `${formatDateTime(s.lastSuccessAt)} (cache age ${ageText(s.lastSuccessAt)})` : "never"}</dd>
+                <dt className="text-muted">Last failure</dt>
+                <dd>{s.lastFailureAt ? formatDateTime(s.lastFailureAt) : "—"}</dd>
+                <dt className="text-muted">Latency</dt>
+                <dd>{s.lastLatencyMs !== null ? `${s.lastLatencyMs} ms` : "—"}</dd>
+                <dt className="text-muted">Circuit</dt>
+                <dd>
+                  {s.pausedUntil && s.pausedUntil > new Date()
+                    ? `paused until ${formatDateTime(s.pausedUntil)} (${s.consecutiveFailures} failures)`
+                    : s.consecutiveFailures
+                      ? `closed, ${s.consecutiveFailures} recent failure(s)`
+                      : "closed"}
+                </dd>
+                {s.quota && (
+                  <>
+                    <dt className="text-muted">Quota today</dt>
+                    <dd>
+                      {s.quota.used} used / {Math.max(0, s.quota.perDay - s.quota.used)} left (cap {s.quota.perDay})
+                    </dd>
+                  </>
+                )}
+              </dl>
               {s.lastError && <p className="mt-1 text-xs text-danger">Last error: {s.lastError}</p>}
               {(INGESTIBLE_KEYS as readonly string[]).includes(s.key) && s.status === "enabled" && (
                 <form action={runSourceNow.bind(null, s.key)} className="mt-2">
@@ -226,6 +261,18 @@ export default async function AdminPage(props: PageProps<"/admin">) {
             ))}
           </ul>
         )}
+      </Card>
+
+      <Card className="p-4">
+        <h2 className="font-semibold">Creator actions (last 7 days, counts only)</h2>
+        <ul className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+          {CREATOR_EVENTS.map((t) => (
+            <li key={t} className="flex justify-between rounded border border-line px-2 py-1">
+              <span className="text-muted">{t}</span>
+              <span className="tabular-nums">{eventCounts.find((e) => e.type === t)?.n ?? 0}</span>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <Card className="p-4">

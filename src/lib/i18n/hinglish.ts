@@ -794,6 +794,12 @@ export const hinglish: Dict = {
     questionTitle: (alias: string) => `Aapka “${alias}” se matlab kaunsa hai?`,
     answerMsg: (alias: string, name: string) => `“${alias}” matlab ${name}.`,
   },
+  feedbackUi: {
+    question: "Kya ye kaam ka tha?",
+    useful: "Kaam ka",
+    notUseful: "Kaam ka nahi",
+    thanks: "Thanks — note kar liya.",
+  },
   options: {
     categories: {
       tech: "Tech & gadgets",

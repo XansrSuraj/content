@@ -6,7 +6,7 @@ import { adapterFor, type LengthLimit } from "@/lib/domain/platform-adapters";
 import { dedupeHashtags, hashtagsForCopy } from "@/lib/domain/hashtags";
 import { getPlatform } from "@/lib/domain/platforms";
 import type { ClientHashtagStatus, ClientMessage } from "@/lib/services/serialize";
-import { Check, ChevronDown, ChevronUp, CircleAlert, Dot, Pencil } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, CircleAlert, Dot, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useI18n } from "@/components/i18n-provider";
 import { CopyButton } from "@/components/copy-button";
 import { SportsPanel, type SportsPanelHandle } from "./sports-panel";
@@ -83,6 +83,7 @@ export function ResultCard({
         {mode && <Badge tone={mode.tone}>{mode.text}</Badge>}
         <span className="text-xs text-muted">{r.forPlatform(platform.label)}</span>
         <span className="ml-auto flex items-center gap-1">
+          <UsefulButtons messageId={message.id} />
           <CopyButton text={allText} label={r.copyAll} variant="ghost" />
           {compact && (
             <Button size="sm" variant="ghost" onClick={() => setExpanded(false)}>
@@ -658,8 +659,15 @@ function OptionBlock({
   const bodyLabel = yt ? t.description : t.caption;
   const all = yt ? `${title}\n\n${captionWithHashtags(body, copyTags)}` : captionWithHashtags(body, copyTags);
 
+  function copied(field: "title" | "description" | "caption" | "hashtags" | "all") {
+    const extra = { platform: platformId, kind: option.kind, field };
+    if (field === "hashtags") track("hashtags_copied", messageId, extra);
+    else if (recommended) track("recommended_copied", messageId, extra);
+  }
+
   async function save() {
     setSaveState("saving");
+    if (title !== option.title || body !== (yt ? option.description : option.caption)) track("caption_edited", messageId, { platform: platformId, kind: option.kind });
     const res = await fetch("/api/variants", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -731,10 +739,10 @@ function OptionBlock({
       <PackagingCheck text={yt ? title : body} tags={tags} platformId={platformId} trendTitles={trendTitles} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {yt && <CopyButton text={title} label={t.copyTitle} />}
-        <CopyButton text={body} label={yt ? t.copyDescription : t.copyCaption} />
-        <CopyButton text={copyTags.join(" ")} label={d.result.copyHashtags} />
-        <CopyButton text={all} label={yt ? t.copyAll : d.result.copyFor(platform.label)} variant="primary" />
+        {yt && <CopyButton text={title} label={t.copyTitle} onCopied={() => copied("title")} />}
+        <CopyButton text={body} label={yt ? t.copyDescription : t.copyCaption} onCopied={() => copied(yt ? "description" : "caption")} />
+        <CopyButton text={copyTags.join(" ")} label={d.result.copyHashtags} onCopied={() => copied("hashtags")} />
+        <CopyButton text={all} label={yt ? t.copyAll : d.result.copyFor(platform.label)} variant="primary" onCopied={() => copied("all")} />
         <Button size="sm" variant="ghost" onClick={() => setEditing((e) => !e)}>
           {!editing && <Pencil aria-hidden className="h-3.5 w-3.5" />}
           {editing ? d.common.doneEditing : d.common.edit}
@@ -751,5 +759,46 @@ function OptionBlock({
         )}
       </div>
     </div>
+  );
+}
+
+/** Fire-and-forget creator action (ids only). */
+function track(type: string, messageId: string, extra: { platform?: string; kind?: string; field?: string } = {}) {
+  if (messageId.startsWith("tmp-")) return;
+  fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, messageId, ...extra }), keepalive: true }).catch(
+    () => undefined,
+  );
+}
+
+function UsefulButtons({ messageId }: { messageId: string }) {
+  const { d } = useI18n();
+  const [done, setDone] = useState(false);
+  if (done) return <span className="text-xs text-muted">{d.feedbackUi.thanks}</span>;
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted">
+      <span className="hidden sm:inline">{d.feedbackUi.question}</span>
+      <button
+        type="button"
+        aria-label={d.feedbackUi.useful}
+        onClick={() => {
+          track("marked_useful", messageId);
+          setDone(true);
+        }}
+        className="rounded p-1 hover:bg-surface"
+      >
+        <ThumbsUp aria-hidden className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        aria-label={d.feedbackUi.notUseful}
+        onClick={() => {
+          track("marked_not_useful", messageId);
+          setDone(true);
+        }}
+        className="rounded p-1 hover:bg-surface"
+      >
+        <ThumbsDown aria-hidden className="h-3.5 w-3.5" />
+      </button>
+    </span>
   );
 }

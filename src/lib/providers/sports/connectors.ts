@@ -28,6 +28,9 @@ export interface MatchProvider {
   getMatch(providerId: string, signal: AbortSignal, now: Date): Promise<MatchUpsert | null>;
 }
 
+/** Daily call budgets we hold each fixtures provider to (also shown in admin diagnostics). */
+export const PROVIDER_DAILY_BUDGET: Record<string, number> = { openligadb: 120, openfootball_fixtures: 40, football_data: 150, cricapi: 90 };
+
 /** JSON GET with clear empty-vs-error semantics: 404 → null (empty), 429 → RateLimitedError, other errors throw. */
 export async function getJson(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }): Promise<unknown> {
   const res = await fetch(url, { ...init, credentials: "omit", redirect: "follow" });

@@ -58,7 +58,14 @@ export type EventType =
   | "caption_selected"
   | "output_edited"
   | "published_link_submitted"
-  | "recommendation_rejected";
+  | "recommendation_rejected"
+  | "generation_succeeded"
+  | "match_corrected"
+  | "recommended_copied"
+  | "hashtags_copied"
+  | "caption_edited"
+  | "marked_useful"
+  | "marked_not_useful";
 
 export async function recordEvent(
   db: DB,

@@ -795,6 +795,12 @@ export const en = {
     questionTitle: (alias: string) => `Which “${alias}” do you mean?`,
     answerMsg: (alias: string, name: string) => `By “${alias}” I mean ${name}.`,
   },
+  feedbackUi: {
+    question: "Was this useful?",
+    useful: "Useful",
+    notUseful: "Not useful",
+    thanks: "Thanks — noted.",
+  },
   options: {
     categories: {
       tech: "Tech & gadgets",
