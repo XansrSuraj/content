@@ -345,13 +345,15 @@ function TrendContextSection({ items }: { items: ClientMessage["contextUsed"] })
 function PackagingCheck({ text, tags, platformId, trendTitles }: { text: string; tags: string[]; platformId: string; trendTitles: string[] }) {
   const platform = getPlatform(platformId);
   const rule = platform.hashtagRule;
+  // The opening is the first sentence of the first line (captions are often one long line).
   const firstLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
-  const firstWords = firstLine.trim().split(/\s+/).filter(Boolean).length;
+  const opening = firstLine.match(/^.+?[.!?।…](\s|$)/u)?.[0] ?? firstLine;
+  const firstWords = opening.trim().split(/\s+/).filter(Boolean).length;
   const lowered = text.toLowerCase();
   const trendHit = trendTitles.find((t) => lowered.includes(t.toLowerCase()));
   const limit = rule.hardLimit;
   const checks: { ok: boolean | null; label: string }[] = [
-    { ok: firstWords <= 12, label: `Opening line: ${firstWords} words${firstWords <= 12 ? "" : " (long — viewers may scroll past)"}` },
+    { ok: firstWords <= 12, label: `Opening sentence: ${firstWords} words${firstWords <= 12 ? "" : " (long — viewers may scroll past)"}` },
     {
       ok: limit === null ? null : tags.length <= limit,
       label: limit === null ? `${tags.length} hashtags (no official ${platform.label} limit found)` : `${tags.length} of max ${limit} hashtags${rule.status === "unverified" ? " (limit not officially confirmed)" : ""}`,

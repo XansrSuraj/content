@@ -1,5 +1,7 @@
 # Deploy TrendSaathi for free (production)
 
+> **Current live deployment:** https://trendsaathi.onrender.com (Render service `trendsaathi`, Ohio), Neon project `content` (US East 2), Groq `openai/gpt-oss-20b`. Pushing to `main` on GitHub redeploys automatically.
+
 This puts the app online with **free tiers only**. No credit card is needed for any of the three services at the time of writing. Total setup time is about 20 minutes. You need three free accounts, which only you can create:
 
 | Piece | Free service | Why this one |

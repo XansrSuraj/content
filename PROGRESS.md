@@ -95,7 +95,21 @@ Keep this file current so work can resume across sessions.
   - Live caption via the open-model provider with trend refresh; guard verified.
 - **Not verifiable here:** real Groq key, Neon, Render (needs the owner's free accounts).
 
+## Session 5 (2026-10-20): LIVE deployment
+- **Live:** https://trendsaathi.onrender.com (Render free, Ohio). Repo https://github.com/XansrSuraj/content (main, auto-deploy on push).
+  - **DB:** Neon project `content` (frosty-shape-78382503, aws-us-east-2, Postgres 18), pooled connection; migrations applied.
+  - **AI:** Groq `openai/gpt-oss-20b` (`AI_PROVIDER=groq`). Google Trends RSS enabled. Demo off. `ADMIN_EMAILS` not set yet (waiting for the owner's email).
+- **Live verification** (throwaway account, deleted afterwards):
+  - Health OK (postgres + open model).
+  - Caption 3.9 s; follow-up "Emoji hata do" 2.0 s with emoji removed; copy + save OK.
+  - Trending now shows 10 real items; brief 3.4 s; saved page OK; no page errors.
+- Fix after live check: the packaging check measured the whole one-line caption; it now measures the opening sentence.
+- Deploy keys live only in `.env.deploy` (gitignored).
+- Known model issue (gpt-oss-20b): occasionally invents small facts (e.g. "Camera 7-star", "charge twice a day"). The UI keeps the "check facts before posting" note.
+
 ## Next steps
+- Set `ADMIN_EMAILS` on Render to the owner's email.
+- Optional: make the GitHub repo private; add GitHub Actions secrets for background trend refresh.
 - Multi-platform pack (Reels caption + Shorts title/description in one go) once generation is faster.
 - Optional bigger local model on GPU (e.g. a 7B) if RAM allows; compare with the eval.
 - See docs/FUTURE.md → "Next priorities".
