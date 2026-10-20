@@ -458,6 +458,26 @@ export function Studio(props: {
                     {q}
                   </button>
                 ))}
+                {lastAssistant?.sports?.players[0] && (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => send(s.focusOn(lastAssistant.sports!.players[0]))}
+                    className="shrink-0 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium hover:border-brand disabled:opacity-50"
+                  >
+                    {s.focusOn(lastAssistant.sports.players[0])}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPanelOpen(true);
+                    requestAnimationFrame(() => document.getElementById("ctx-platform")?.focus());
+                  }}
+                  className="shrink-0 rounded-full border border-dashed border-line bg-surface px-3 py-1 text-xs font-medium hover:border-brand"
+                >
+                  {s.changePlatform}
+                </button>
               </div>
             )}
             <form

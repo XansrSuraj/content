@@ -15,7 +15,7 @@ async function signUp(page: Page, email: string) {
 async function sendCaption(page: Page, text: string) {
   await page.getByRole("textbox", { name: "Message" }).fill(text);
   await page.getByRole("button", { name: /Bhejo|Send/ }).click();
-  await expect(page.getByText("Option A").first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Recommended", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
 }
 
 test("demo creator completes the primary journey", async ({ page, context }) => {
@@ -54,14 +54,15 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   await page.waitForURL(/caption-studio\?brief=/);
   await expect(page.getByRole("textbox", { name: "Message" })).not.toHaveValue("");
   await page.getByRole("button", { name: /Bhejo|Send/ }).click();
-  await expect(page.getByText("Option A").first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Recommended", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await page.waitForURL(/c=/);
 
   // Follow-up keeps the conversation
   await page.getByRole("button", { name: "Remove emoji." }).click();
   // Chat-style history: the earlier reply collapses, the newest reply is shown in full.
   await expect(page.getByRole("button", { name: "Show all 3 options & details" })).toHaveCount(1, { timeout: 60_000 });
-  await expect(page.getByText("Option A", { exact: true })).toHaveCount(1);
+  // Only the newest reply is shown in full, with one recommended option.
+  await expect(page.getByText("Recommended", { exact: true })).toHaveCount(1);
   // The creator's follow-up bubble is part of the thread.
   await expect(page.locator("div.justify-end > div").getByText("Remove emoji.", { exact: true })).toBeVisible();
 
@@ -241,7 +242,7 @@ test("chat composer behaves like a chat app", async ({ page }) => {
   await box.press("Enter");
   // The creator's message shows immediately, then the reply arrives.
   await expect(page.getByText("doosri line")).toBeVisible();
-  await expect(page.getByText("Option A", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Recommended", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(box).toHaveValue("");
   // URL updates without a reload, and the chat appears in the sidebar under "Today".
   await expect(page).toHaveURL(/c=/);

@@ -41,6 +41,18 @@ export const DEFAULT_CONTEXT: CaptionContext = CaptionContextSchema.parse({});
  * Note: there is deliberately no "trending" field. Trend status is assigned by
  * the application from stored evidence, never by the model.
  */
+export const OPTION_KINDS = ["original_improved", "search_focused", "conversation_focused"] as const;
+export type OptionKind = (typeof OPTION_KINDS)[number];
+
+const ModelOption = z.object({
+  kind: z.enum(OPTION_KINDS).describe("original_improved keeps the creator's meaning and voice; search_focused uses natural terms people search; conversation_focused invites a meaningful reply."),
+  title: z.string().describe("YouTube title (only for YouTube platforms), else empty string."),
+  description: z.string().describe("YouTube description (only for YouTube platforms), else empty string."),
+  caption: z.string().describe("Caption text without hashtags (Instagram/Facebook/TikTok), else empty string."),
+  hashtags: z.array(z.string()).describe("Hashtags for this option, each starting with #, within the platform limit."),
+  why: z.string().describe("One short, specific sentence on why this option fits."),
+});
+
 export const CaptionModelOutputSchema = z.object({
   topicSummary: z.string().describe("One or two sentences restating the creator's actual topic and intent."),
   assumptions: z.array(z.string()).describe("Assumptions made because context was missing. Empty if none."),
@@ -48,18 +60,15 @@ export const CaptionModelOutputSchema = z.object({
     .string()
     .nullable()
     .describe("At most one focused question if essential information is missing, else null."),
-  variants: z
+  platforms: z
     .array(
       z.object({
-        id: z.enum(["A", "B", "C"]),
-        approach: z.string().describe("Short name of the creative approach, e.g. 'Story-first', 'Question hook'."),
-        caption: z.string().describe("Full caption text without hashtags."),
-        hashtags: z.array(z.string()).describe("Hashtags for this variant, each starting with #."),
+        platform: z.string().describe("Platform id from <context>: the primary platform first, then each alsoFor platform."),
+        recommended: z.enum(OPTION_KINDS),
+        options: z.array(ModelOption).describe("Exactly three options, one of each kind."),
       }),
     )
-    .describe("Exactly three meaningfully different caption options."),
-  recommendedVariantId: z.enum(["A", "B", "C"]),
-  recommendationReason: z.string(),
+    .describe("One entry per platform in <context> (primary first)."),
   hooks: z.array(z.string()).describe("3 to 5 alternative opening lines."),
   hashtagSuggestions: z
     .array(z.object({ tag: z.string(), reason: z.string() }))
@@ -67,15 +76,6 @@ export const CaptionModelOutputSchema = z.object({
   keywords: z.array(z.string()).describe("Natural search phrases a viewer might type. Empty if not useful."),
   improvements: z.array(z.string()).describe("Concise list of what was improved and why."),
   limitations: z.array(z.string()).describe("Important caveats, e.g. facts that need checking. Empty if none."),
-  platformVersions: z
-    .array(
-      z.object({
-        platform: z.string().describe("Platform id from alsoFor in <context>."),
-        caption: z.string().describe("The recommended option adapted for this platform: its length, style and conventions."),
-        hashtags: z.array(z.string()).describe("Hashtags for this platform, within its limit."),
-      }),
-    )
-    .describe("One adaptation per platform listed in alsoFor in <context>. Empty array if alsoFor is empty."),
 });
 export type CaptionModelOutput = z.infer<typeof CaptionModelOutputSchema>;
 
@@ -86,7 +86,68 @@ const tagSchema = z
   .transform((t) => normalizeHashtag(t))
   .pipe(z.string().min(2).max(60));
 
-export const CaptionResultSchema = z.object({
+const ResultOption = z.object({
+  kind: z.enum(OPTION_KINDS),
+  title: z.string().max(300).default(""),
+  description: z.string().max(5000).default(""),
+  caption: z.string().max(5000).default(""),
+  hashtags: z.array(tagSchema).max(12).default([]),
+  why: z.string().max(400).default(""),
+});
+export type ResultOption = z.infer<typeof ResultOption>;
+
+const ResultPlatform = z.object({
+  platform: z.string().max(40),
+  recommended: z.enum(OPTION_KINDS),
+  options: z.array(ResultOption).length(3),
+});
+export type ResultPlatform = z.infer<typeof ResultPlatform>;
+
+export const KIND_TO_VARIANT: Record<OptionKind, "A" | "B" | "C"> = { original_improved: "A", search_focused: "B", conversation_focused: "C" };
+export const KIND_LABEL: Record<OptionKind, string> = {
+  original_improved: "Original improved",
+  search_focused: "Search focused",
+  conversation_focused: "Conversation focused",
+};
+
+/** Main text of an option for the legacy single-caption views (YouTube: the description). */
+export function optionText(o: { caption: string; description: string; title: string }): string {
+  return (o.caption || o.description || o.title).trim();
+}
+
+/**
+ * Model output v2 lists platforms with three typed options each. The older
+ * fields (variants A/B/C, platformVersions) are derived from it, so history,
+ * saving and older views keep working; results stored before v2 parse as before.
+ */
+function fromV2(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const r = input as Record<string, unknown>;
+  if (!Array.isArray(r.platforms) || r.platforms.length === 0 || Array.isArray(r.variants)) return input;
+  type P = { platform: string; recommended: OptionKind; options: { kind: OptionKind; title?: string; description?: string; caption?: string; hashtags?: string[]; why?: string }[] };
+  const platforms = r.platforms as P[];
+  const primary = platforms[0];
+  const ordered = OPTION_KINDS.map((k) => primary.options?.find((o) => o.kind === k)).filter(Boolean) as P["options"];
+  const variants = ordered.map((o) => ({
+    id: KIND_TO_VARIANT[o.kind],
+    approach: KIND_LABEL[o.kind],
+    caption: optionText({ caption: o.caption ?? "", description: o.description ?? "", title: o.title ?? "" }) || (o.title ?? ""),
+    hashtags: o.hashtags ?? [],
+  }));
+  const rec = primary.options?.find((o) => o.kind === primary.recommended);
+  return {
+    ...r,
+    variants,
+    recommendedVariantId: KIND_TO_VARIANT[primary.recommended] ?? "A",
+    recommendationReason: rec?.why ?? "",
+    platformVersions: platforms.slice(1).map((p) => {
+      const o = p.options?.find((x) => x.kind === p.recommended) ?? p.options?.[0];
+      return { platform: p.platform, caption: optionText({ caption: o?.caption ?? "", description: o?.description ?? "", title: o?.title ?? "" }) || "-", hashtags: o?.hashtags ?? [] };
+    }),
+  };
+}
+
+const CaptionResultBase = z.object({
   topicSummary: z.string().min(1).max(600),
   assumptions: z.array(z.string().max(300)).max(6),
   clarifyingQuestion: z.string().max(300).nullable(),
@@ -112,8 +173,11 @@ export const CaptionResultSchema = z.object({
     .array(z.object({ platform: z.string().max(40), caption: z.string().min(1).max(2200), hashtags: z.array(tagSchema).max(12) }))
     .max(3)
     .default([]),
+  /** v2: per selected platform, three typed options. Empty for results made before v2. */
+  platforms: z.array(ResultPlatform).max(3).default([]),
 });
-export type CaptionResult = z.infer<typeof CaptionResultSchema>;
+export const CaptionResultSchema = z.preprocess(fromV2, CaptionResultBase);
+export type CaptionResult = z.infer<typeof CaptionResultBase>;
 
 export type GenerationMode = "live_ai" | "open_model" | "local_ai" | "template_preview" | "example";
 
@@ -161,7 +225,16 @@ export function applyFollowUpToContext(message: string, ctx: CaptionContext, ori
     next.tone = "energetic";
     applied.push("Tone: energetic");
   }
-  if (/\bhinglish\b/.test(m)) {
+  if (/\b(natural|naturally|swabhavik)\b.*\bhinglish\b|\bhinglish\b.*\bnatural\b|हिंग्लिश.*स्वाभाविक/.test(m)) {
+    addNote(next, "Make the Hinglish sound more natural, like creators actually write");
+    applied.push("More natural Hinglish");
+  }
+  const focus = message.match(/\bfocus on ([\p{L}][\p{L} .'-]{1,40}?)[.!]?$/iu) ?? message.match(/^([\p{L}][\p{L} .'-]{1,40}?) (?:pe|par|पर) (?:focus|फोकस)/iu);
+  if (focus) {
+    addNote(next, `Focus on ${focus[1].trim()} (only facts already in the caption or evidence)`);
+    applied.push(`Focus: ${focus[1].trim()}`);
+  }
+  if (/\bhinglish\b|हिंग्लिश/.test(m)) {
     next.language = "hinglish";
     applied.push("Language: Hinglish");
   } else if ((/\b(hindi|devanagari)\b/.test(m) || /हि[ंन्]दी में/.test(m)) && !/hinglish/.test(m)) {
@@ -298,10 +371,34 @@ export function enforceConstraints(result: CaptionResult, ctx: CaptionContext): 
       const caption = removeEngagementBait(stripTrailingHashtags(p.caption)).text;
       return { ...p, caption: ctx.emoji === "none" ? stripEmoji(caption) : caption, hashtags: limit === null ? p.hashtags : p.hashtags.slice(0, limit) };
     });
+  // v2 platforms: only the requested ones (primary first), each option cleaned like the variants.
+  const wanted = [ctx.platform, ...ctx.extraPlatforms.filter((p) => p !== ctx.platform)];
+  const clean = (text: string, lockFirst: boolean) => {
+    let t = removeEngagementBait(stripTrailingHashtags(text)).text;
+    if (lockFirst && ctx.keepFirstLine && t) t = applyLockedFirstLine(t, ctx.keepFirstLine.trim(), ctx.emoji);
+    return ctx.emoji === "none" ? stripEmoji(t) : t;
+  };
+  const platforms = wanted
+    .map((id) => result.platforms.find((p) => p.platform === id))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p))
+    .map((p) => {
+      const limit = getPlatform(p.platform).hashtagRule.hardLimit;
+      return {
+        ...p,
+        options: p.options.map((o) => ({
+          ...o,
+          title: ctx.emoji === "none" ? stripEmoji(o.title) : o.title.trim(),
+          caption: o.caption ? clean(o.caption, true) : "",
+          description: o.description ? clean(o.description, !o.caption) : "",
+          hashtags: limit === null ? o.hashtags : o.hashtags.slice(0, limit),
+        })),
+      };
+    });
   return {
     ...result,
     variants,
     platformVersions,
+    platforms,
     hooks: ctx.emoji === "none" ? result.hooks.map(stripEmoji) : result.hooks,
     limitations: limitations.slice(0, 6),
   };

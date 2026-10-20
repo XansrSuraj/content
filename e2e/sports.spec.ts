@@ -19,7 +19,11 @@ test("sports caption: no fixture → creator adds the match → caption uses it;
   await expect(page.getByText("Match context").first()).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("No verified fixture found for this caption").first()).toBeVisible();
   // The extra platform version is shown with its own copy button.
-  await expect(page.getByRole("button", { name: "Copy for YouTube Shorts" }).first()).toBeVisible();
+  await page.getByRole("tab", { name: "YouTube Shorts" }).first().click();
+  // YouTube output has its own title + description fields.
+  await expect(page.getByRole("button", { name: "Copy title" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy description" }).first()).toBeVisible();
+  await page.getByRole("tab", { name: "Instagram Reels" }).first().click();
 
   await page.getByRole("button", { name: "Not listed? Add match details" }).click();
   await expect(page.getByLabel("Team 1")).toHaveValue("India");

@@ -4,7 +4,6 @@ import type { MatchSnapshot, SportsContextUsed } from "@/lib/db/schema";
 import { TEAM_BY_ID, PLAYERS } from "@/lib/domain/sports/entities";
 import { parseSportsIntent, type SportsIntent } from "@/lib/domain/sports/intent";
 import { matchStage, resolveMatch, STAGE_GUIDANCE, writingStage, type MatchRecord, type MatchStage } from "@/lib/domain/sports/resolve";
-import { refreshSportsIfStale } from "@/lib/jobs/sports-ingest";
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 import { getMatch, listMatchesFor } from "@/lib/repo/sports";
 
@@ -76,8 +75,7 @@ export async function buildSportsContext(
   let candidates: MatchRecord[] = [];
   if (opts.matchId) match = await getMatch(db, userId, opts.matchId);
   if (!match && intent.sport) {
-    // Bounded: the caption is never held up long by a slow fixtures provider.
-    await refreshSportsIfStale(db, { now, sport: intent.sport, timeoutMs: 6_000 }).catch(() => undefined);
+    // Cached data only: background jobs keep fixtures fresh; a caption never waits on a provider.
     const pool = await listMatchesFor(db, userId, { sport: intent.sport, from: new Date(now.getTime() - 10 * 86_400_000), to: new Date(now.getTime() + 14 * 86_400_000) });
     const res = resolveMatch(intent, pool, now, opts.timeZone);
     if (res.kind === "single") match = res.match;
@@ -101,6 +99,18 @@ export async function buildSportsContext(
   } else {
     notes.push("SPORTS CAPTION, NO VERIFIED FIXTURE: do not state match dates, results, scores, playing XI, injuries or records. Keep to what the caption says.");
   }
+  const question = intent.question
+    ? {
+        kind: intent.question.kind,
+        alias: intent.question.alias ?? null,
+        options: intent.question.options.map((id) => ({ id, name: TEAM_BY_ID.get(id)?.name ?? PLAYERS.find((p) => p.id === id)?.name ?? id })),
+      }
+    : null;
+  if (question) {
+    notes.push(
+      `UNCLEAR SUBJECT: "${question.alias ?? "the subject"}" could mean ${question.options.map((o) => o.name).join(", ")}. Do not name any one of them as fact; keep wording general and use clarifyingQuestion to ask which one.`,
+    );
+  }
 
   const used: SportsContextUsed = {
     sport: intent.sport ?? (match ? match.sport : null),
@@ -113,6 +123,7 @@ export async function buildSportsContext(
     // Filled from the gated evidence bundle by the caller.
     references: [],
     publishAt: opts.publishAt,
+    question,
   };
   const vs = match ? `${match.homeName} vs ${match.awayName}` : teamNames.join(" vs ");
   const shortVs = teamShort.filter(Boolean).join(" vs ");

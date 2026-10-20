@@ -325,4 +325,5 @@ export const DEMO_EXAMPLE_RESULT: CaptionResult = {
   ],
   limitations: ["This example was pre-written for the demo. It was not generated from your input."],
   platformVersions: [],
+  platforms: [],
 };

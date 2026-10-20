@@ -5,6 +5,8 @@ import type { EvidenceBundle, EvidenceCategory } from "@/lib/domain/evidence";
 import { useI18n } from "@/components/i18n-provider";
 import { Badge, formatDateTime } from "@/components/ui";
 
+const PROVIDER_NAME: Record<string, string> = { openfootball: "openfootball", openligadb: "OpenLigaDB", football_data: "football-data.org", cricapi: "CricketData.org" };
+
 const ORDER: EvidenceCategory[] = ["match_fact", "search_interest", "platform_observation", "creator_reference"];
 const TONE = { match_fact: "ok", search_interest: "info", platform_observation: "brand", creator_reference: "neutral", generated_suggestion: "neutral" } as const;
 
@@ -38,10 +40,17 @@ export function EvidenceSection({ bundle }: { bundle: EvidenceBundle }) {
                       {d.result.tagDemo}
                     </Badge>
                   )}
-                  <span className="block text-muted">
-                    {i.source} · {i.region} · {t.observed} {formatDateTime(i.observedAt, lang)} · {t.checked} {formatDateTime(i.checkedAt, lang)} ·{" "}
-                    {t.origin[i.origin]}
-                  </span>
+                  {i.category === "match_fact" ? (
+                    <span className="block text-muted">
+                      {d.sports.startsAt(formatDateTime(i.observedAt, lang))} · {d.sports.checked(formatDateTime(i.checkedAt, lang))} ·{" "}
+                      {i.origin === "creator" ? d.sports.creatorEntered : d.sports.source(PROVIDER_NAME[i.source] ?? i.source)}
+                    </span>
+                  ) : (
+                    <span className="block text-muted">
+                      {i.source} · {i.region} · {t.observed} {formatDateTime(i.observedAt, lang)} · {t.checked} {formatDateTime(i.checkedAt, lang)} ·{" "}
+                      {t.origin[i.origin]}
+                    </span>
+                  )}
                   {i.metric && <span className="block text-muted">{i.metric.scope}</span>}
                   {i.sourceUrl && (
                     <a href={i.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className="mt-0.5 inline-flex items-center gap-1 text-brand">

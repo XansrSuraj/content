@@ -1,8 +1,8 @@
 # Sports Caption Optimiser — PROGRESS
 
-**Current phase:** 4 — Platform adapters + generation pipeline (Phases 0–3 done)
+**Current phase:** 5 — Hashtags (Phases 0–4 done)
 **Spec:** `docs/tasks/sports-captions.md`
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-21
 
 ---
 
@@ -243,3 +243,22 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
 - **References:** they moved from `sports-context` into the bundle. A creator's reference topic is read in the caption's sport. Search titles keep strict reading, so "India at the Asian Para Games" can't attach to a cricket caption.
 - The caption path reads search data from the cache only (no refresh call), and `match notes` now use `writingStage` (posting time).
 - **Tests:** 175 unit tests passing (new `tests/evidence.test.ts`); E2E 10/10.
+
+## Phase 4 — Platform adapters + generation pipeline: DONE (2026-10-21)
+- **Platform adapters** (`src/lib/domain/platform-adapters.ts`), one per in-app platform: output fields, length limits with source and check date, hashtag placement, CTA style, tone notes, forbidden other-platform wording.
+- **Verified limits** (checked 2026-10-21):
+  - YouTube title 100 / description 5,000 — official, https://support.google.com/youtube/answer/57404.
+  - Instagram caption 2,200 characters, 30 hashtags, 20 mentions — official, https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media. The Instagram hashtag rule was updated from "5, unverified" to "30, official"; copy still defaults to 5 because of reports of a newer in-app limit of 5.
+  - Facebook text 63,206 and TikTok caption 2,200 — **unverified** (only third-party sources); configurable, shown with "limit not officially confirmed".
+- **Result v2** (`captions.ts`): the model returns `platforms[]` (primary first). Each platform has `recommended` and exactly 3 options: `original_improved`, `search_focused`, `conversation_focused`, each with title/description/caption, hashtags and why. YouTube fills title + description; other platforms fill a caption.
+  - `CaptionResultSchema` preprocesses v2 into the older fields (variants A/B/C, platformVersions), so history, saving, the compact view and old stored results keep working.
+  - `enforceConstraints` keeps only the requested platforms (primary first) and cleans every option: bait, in-text hashtags, emoji, locked first line, per-platform hashtag limit.
+- **Prompt:** each platform's rules (fields, maxLength, hashtag max and placement, CTA, tone, `neverSay`) go into `<context>`. The system prompt covers the 3 option kinds, per-platform fields, never using another platform's wording, keeping the language everywhere (including Devanagari/Hinglish purity), and no invented experiences, giveaways, shoutouts, insider access or #viral/#fyp-style filler.
+- **Pipeline:**
+  - The caption request no longer calls any fixture or trend provider: cached data only. A test asserts that `fetch` is never called during a caption.
+  - A confidently resolved match is pinned to the conversation (`context.matchId`), so follow-ups keep the same match and facts.
+  - An unclear subject (e.g. "MI") becomes **one targeted question**: an UNCLEAR SUBJECT note to the model, with the options stored on the message.
+  - **Decision:** no separate LLM extraction call. Deterministic extraction plus one question covers the spec's cases, and this saves Groq quota — about 1 generation per caption, with up to 2 repairs coming in Phase 6.
+- **Follow-up chips** (all 3 languages): Shorter · More natural Hinglish · Keep my first line · Remove emoji · Less promotional · "Focus on <player>" (when the video names one) · Change platform (opens the platform picker). The parser handles natural-Hinglish and focus notes.
+- **UI:** platform tabs; recommended option first, 2 alternatives collapsed; YouTube title + description fields; character counter against the verified limit (marked when unverified); "why"; copy per field (title, description, caption, hashtags, all); edit and save. Match facts in the evidence list now show start time, status-checked time and source.
+- **Tests:** 183 unit (new `pipeline-v2.test.ts`, `platform-adapters.test.ts`); E2E 10/10 (updated for v2: "Recommended" badge, YouTube tab with title/description copy buttons).

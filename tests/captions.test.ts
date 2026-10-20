@@ -132,17 +132,19 @@ describe("regressions found by the caption eval", () => {
 
 describe("quick-reply chips in every app language", () => {
   const original = "Aaj maine apne budget phone se cinematic video shoot kiya.\nDusri line.";
-  // Chips are [shorter, funny, less promo, keep first line, Shorts, no emoji, final only] in each dictionary.
+  // Chips are [shorter, more natural Hinglish, keep first line, no emoji, less promo] + "focus on <player>" in each dictionary.
   it.each(["english", "hinglish", "hindi"] as const)("%s chips each apply their constraint", (lang) => {
     const chips = getDict(lang).studio.quickFollowups;
     const apply = (i: number) => applyFollowUpToContext(chips[i], DEFAULT_CONTEXT, original).context;
     expect(apply(0).length).toBe("short");
-    expect(apply(1).tone).toBe("funny");
-    expect(apply(2).notes).toContain("Keep it less promotional");
-    expect(apply(3).keepFirstLine).toBe("Aaj maine apne budget phone se cinematic video shoot kiya.");
-    expect(apply(4).platform).toBe("youtube_shorts");
-    expect(apply(5).emoji).toBe("none");
-    expect(apply(6).outputMode).toBe("final_only");
+    expect(apply(1).language).toBe("hinglish");
+    expect(apply(1).notes.join(" ")).toMatch(/more natural/);
+    expect(apply(2).keepFirstLine).toBe("Aaj maine apne budget phone se cinematic video shoot kiya.");
+    expect(apply(3).emoji).toBe("none");
+    expect(apply(4).notes).toContain("Keep it less promotional");
+    // "Focus on this player" chip.
+    const focus = applyFollowUpToContext(getDict(lang).studio.focusOn("Virat Kohli"), DEFAULT_CONTEXT, original).context;
+    expect(focus.notes.join(" ")).toMatch(/Focus on Virat Kohli/);
   });
 
   it("every applied label has a translation", () => {

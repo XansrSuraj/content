@@ -148,6 +148,8 @@ ${sports.trendTerms}`,
     includeDemo: user.isDemo && cfg.demoEnabled,
   });
   if (sports.used) sports.used.references = evidence.references;
+  // A confidently resolved match is pinned to the conversation so follow-ups keep the same match.
+  if (sports.match && !context.matchId) context.matchId = sports.match.id;
   const trendItems = evidence.trendItems;
   const evidenceNotes = [
     ...(opportunityId ? await opportunityNotes(db, user, opportunityId) : []),

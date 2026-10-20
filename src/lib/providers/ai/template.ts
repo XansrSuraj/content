@@ -3,6 +3,7 @@ import { enforceConstraints, stripEmoji } from "@/lib/domain/captions";
 import type { BriefContent } from "@/lib/domain/briefs";
 import { dedupeHashtags, normalizeHashtag } from "@/lib/domain/hashtags";
 import { getPlatform } from "@/lib/domain/platforms";
+import { adapterFor } from "@/lib/domain/platform-adapters";
 import type {
   BriefProvider,
   BriefProviderRequest,
@@ -144,6 +145,28 @@ export class TemplateCaptionProvider implements CaptionProvider {
           const limit = getPlatform(p).hashtagRule.hardLimit;
           return { platform: p, caption: variants[0].caption, hashtags: limit === null ? tags : tags.slice(0, limit) };
         }),
+      // Same three layouts per selected platform; YouTube gets a title + description (no rewriting without AI).
+      platforms: [c.platform, ...c.extraPlatforms.filter((p) => p !== c.platform)].map((p) => {
+        const limit = getPlatform(p).hashtagRule.hardLimit;
+        const pTags = limit === null ? tags : tags.slice(0, limit);
+        const yt = adapterFor(p).fields.includes("title");
+        const byKind = { original_improved: variants[2], search_focused: variants[0], conversation_focused: variants[1] } as const;
+        return {
+          platform: p,
+          recommended: "original_improved" as const,
+          options: (["original_improved", "search_focused", "conversation_focused"] as const).map((kind) => {
+            const v = byKind[kind];
+            return {
+              kind,
+              title: yt ? (v.caption.split(/\r?\n/)[0] ?? "").slice(0, 100) : "",
+              description: yt ? v.caption : "",
+              caption: yt ? "" : v.caption,
+              hashtags: pTags,
+              why: "Template layout — fill the [bracketed] parts yourself.",
+            };
+          }),
+        };
+      }),
       keywords: keywords.slice(0, 4),
       improvements: ["Adds a structure: hook, one concrete detail, and a goal-matched call to action."],
       limitations: [

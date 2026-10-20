@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AnthropicCaptionProvider } from "@/lib/providers/ai/anthropic";
 import { DEFAULT_CONTEXT } from "@/lib/domain/captions";
-import { sampleResult } from "./fixtures";
+import { sampleModelOutput } from "./fixtures";
 
 /**
  * Exercises the real SDK request/parse path against a local fake Messages API,
@@ -45,7 +45,7 @@ describe("Anthropic adapter wire format", () => {
         type: "message",
         role: "assistant",
         model: "claude-test-model",
-        content: [{ type: "text", text: JSON.stringify(sampleResult()) }],
+        content: [{ type: "text", text: JSON.stringify(sampleModelOutput()) }],
         stop_reason: "end_turn",
         stop_sequence: null,
         usage: { input_tokens: 900, output_tokens: 400, cache_read_input_tokens: 100 },
@@ -67,7 +67,7 @@ describe("Anthropic adapter wire format", () => {
     expect(oc.effort).toBe("low");
     expect(oc.format.type).toBe("json_schema");
     expect(Object.keys(oc.format.schema.properties)).toEqual(
-      expect.arrayContaining(["topicSummary", "variants", "recommendedVariantId", "hashtagSuggestions", "limitations"]),
+      expect.arrayContaining(["topicSummary", "platforms", "hashtagSuggestions", "limitations"]),
     );
     // The model is never asked to assert trend status.
     expect(JSON.stringify(oc.format.schema)).not.toMatch(/trending|isTrending|trendStatus/i);
@@ -92,7 +92,7 @@ describe("Anthropic adapter wire format", () => {
   it("omits fallbacks and effort when configured off", async () => {
     reply = () => ({
       status: 200,
-      json: { id: "m", type: "message", role: "assistant", model: "x", content: [{ type: "text", text: JSON.stringify(sampleResult()) }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } },
+      json: { id: "m", type: "message", role: "assistant", model: "x", content: [{ type: "text", text: JSON.stringify(sampleModelOutput()) }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } },
     });
     const client = new Anthropic({ apiKey: settings.apiKey, baseURL, maxRetries: 0 });
     await new AnthropicCaptionProvider({ ...settings, fallbacks: "off", effort: null }, client).generate(req);

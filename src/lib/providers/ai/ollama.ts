@@ -244,6 +244,7 @@ export function expandLocalCaption(local: z.infer<typeof LocalCaptionSchema>): u
     limitations: ["Written by a small local model — check facts and wording before posting."],
     // The local model only writes the main options; per-platform versions need the hosted model.
     platformVersions: [],
+    platforms: [],
   };
 }
 

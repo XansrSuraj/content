@@ -221,6 +221,8 @@ export interface SportsContextUsed {
   candidates: MatchSnapshot[];
   references: ReferenceSnapshot[];
   publishAt: string | null;
+  /** One targeted question when the subject itself is unclear (e.g. which "MI"). */
+  question?: { kind: string; alias: string | null; options: { id: string; name: string }[] } | null;
 }
 
 export interface TrendContextItem {

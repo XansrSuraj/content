@@ -44,14 +44,14 @@ const YT_RULE: HashtagRule = {
 };
 
 const IG_RULE: HashtagRule = {
-  hardLimit: 5,
+  hardLimit: 30,
   hardLimitNote:
-    "Multiple reports say Instagram now allows up to 5 hashtags per post/Reel (announced Dec 2025). Some Meta developer pages still mention 30. Confirm in the Instagram app before relying on it.",
+    "Meta's Instagram API docs: a caption allows at most 30 hashtags (and 2,200 characters). Some reports say the app now limits Reels/posts to 5 — TrendSaathi copies 5 by default to stay safe either way.",
   copyDefault: 5,
   placement: "Caption",
-  sourceUrl: "https://help.instagram.com/",
+  sourceUrl: "https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media",
   checkedOn: "2026-10-20",
-  status: "unverified",
+  status: "official",
 };
 
 const FB_RULE: HashtagRule = {

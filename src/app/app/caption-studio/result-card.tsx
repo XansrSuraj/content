@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { captionWithHashtags, type CaptionResult } from "@/lib/domain/captions";
+import { KIND_TO_VARIANT, captionWithHashtags, type CaptionResult, type ResultOption } from "@/lib/domain/captions";
+import { adapterFor, type LengthLimit } from "@/lib/domain/platform-adapters";
 import { dedupeHashtags, hashtagsForCopy } from "@/lib/domain/hashtags";
 import { getPlatform } from "@/lib/domain/platforms";
 import type { ClientHashtagStatus, ClientMessage } from "@/lib/services/serialize";
@@ -10,7 +11,7 @@ import { useI18n } from "@/components/i18n-provider";
 import { CopyButton } from "@/components/copy-button";
 import { SportsPanel, type SportsPanelHandle } from "./sports-panel";
 import { EvidenceSection } from "./evidence-section";
-import { Badge, Button, Card, Textarea, cx, formatDateTime } from "@/components/ui";
+import { Badge, Button, Card, Input, Textarea, cx, formatDateTime } from "@/components/ui";
 
 const MODE_TONE = {
   live_ai: "ok",
@@ -121,28 +122,39 @@ export function ResultCard({
           </div>
         )}
 
-        <div className="space-y-3">
-          {(showAll ? ordered : [recommended]).map((v) => (
-            <VariantBlock
-              key={v.id}
-              variant={v}
-              recommended={v.id === recommended.id}
-              reason={v.id === recommended.id ? result.recommendationReason : null}
-              conversationId={conversationId}
-              messageId={message.id}
-              platformId={platformId}
-              statusByTag={statusByTag}
-              trendTitles={(message.contextUsed ?? []).map((c) => c.title)}
-            />
-          ))}
-          {result.platformVersions.length > 0 && <PlatformVersions versions={result.platformVersions} />}
-          {!showAll && (
-            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
-              <ChevronDown aria-hidden className="h-3.5 w-3.5" />
-              {r.showOther}
-            </Button>
-          )}
-        </div>
+        {result.platforms.length > 0 ? (
+          <PlatformResults
+            result={result}
+            conversationId={conversationId}
+            messageId={message.id}
+            primaryPlatform={platformId}
+            statusByTag={statusByTag}
+            trendTitles={(message.contextUsed ?? []).map((c) => c.title)}
+          />
+        ) : (
+          <div className="space-y-3">
+            {(showAll ? ordered : [recommended]).map((v) => (
+              <VariantBlock
+                key={v.id}
+                variant={v}
+                recommended={v.id === recommended.id}
+                reason={v.id === recommended.id ? result.recommendationReason : null}
+                conversationId={conversationId}
+                messageId={message.id}
+                platformId={platformId}
+                statusByTag={statusByTag}
+                trendTitles={(message.contextUsed ?? []).map((c) => c.title)}
+              />
+            ))}
+            {result.platformVersions.length > 0 && <PlatformVersions versions={result.platformVersions} />}
+            {!showAll && (
+              <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
+                <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+                {r.showOther}
+              </Button>
+            )}
+          </div>
+        )}
 
         {outputMode === "full" && (
           <>
@@ -208,7 +220,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function TagChip({ tag, status }: { tag: string; status?: ClientHashtagStatus }) {
   const { d } = useI18n();
-  const tone = status?.status === "verified" ? "ok" : status?.status === "search_interest" ? "info" : status?.status === "demo" ? "accent" : "neutral";
+  const tone =
+    status?.status === "verified" ? "ok" : status?.status === "search_interest" ? "info" : status?.status === "demo" ? "accent" : "neutral";
   const label =
     status?.status === "verified"
       ? d.result.tagObserved
@@ -289,7 +302,13 @@ function VariantBlock({
           <label className="text-xs font-semibold" htmlFor={`tags-${messageId}-${variant.id}`}>
             {r.hashtagsSpace}
           </label>
-          <Textarea id={`tags-${messageId}-${variant.id}`} value={tagsText} onChange={(e) => setTagsText(e.target.value)} rows={2} className="min-h-0" />
+          <Textarea
+            id={`tags-${messageId}-${variant.id}`}
+            value={tagsText}
+            onChange={(e) => setTagsText(e.target.value)}
+            rows={2}
+            className="min-h-0"
+          />
         </div>
       ) : (
         <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{text}</p>
@@ -300,11 +319,7 @@ function VariantBlock({
           <TagChip key={t} tag={t} status={statusByTag.get(t.toLowerCase())} />
         ))}
       </div>
-      {overLimit && (
-        <p className="mt-1 text-xs text-warn">
-          {r.overLimit(tags.length, platform.label, rule.hardLimit ?? 0, copyTags.length)}
-        </p>
-      )}
+      {overLimit && <p className="mt-1 text-xs text-warn">{r.overLimit(tags.length, platform.label, rule.hardLimit ?? 0, copyTags.length)}</p>}
 
       <PackagingCheck text={text} tags={tags} platformId={platformId} trendTitles={trendTitles} />
 
@@ -319,7 +334,11 @@ function VariantBlock({
         <Button size="sm" variant="secondary" onClick={save} disabled={saveState === "saving"}>
           {saveState === "saving" ? d.common.saving : saveState === "saved" ? `${d.common.saved} ✓` : d.common.save}
         </Button>
-        {saveState === "error" && <span role="alert" className="text-xs text-danger">{r.saveFailed}</span>}
+        {saveState === "error" && (
+          <span role="alert" className="text-xs text-danger">
+            {r.saveFailed}
+          </span>
+        )}
       </div>
       <p className="mt-1 text-[11px] text-muted">
         {r.copyNote(platform.label, copyTags.length)}{" "}
@@ -374,7 +393,8 @@ function EvidenceList({ title, tone, items }: { title: string; tone: "ok" | "acc
             <Badge tone={tone}>{s.tag}</Badge>
             {s.evidence.map((e, i) => (
               <p key={i} className="mt-1 text-muted">
-                {e.sourceName} · {e.platform} · {e.geo} · {d.result.observed} {formatDateTime(e.observedAt, lang)} · {d.result.retrieved} {formatDateTime(e.retrievedAt, lang)}
+                {e.sourceName} · {e.platform} · {e.geo} · {d.result.observed} {formatDateTime(e.observedAt, lang)} · {d.result.retrieved}{" "}
+                {formatDateTime(e.retrievedAt, lang)}
                 <br />
                 {d.result.coverage} {e.coverageNote}
                 {e.url && (
@@ -406,7 +426,11 @@ function TrendContextSection({ items }: { items: ClientMessage["contextUsed"] })
           {items.map((i) => (
             <li key={i.title} className="rounded-lg border border-line p-2 text-xs">
               <span className="font-semibold">{i.title}</span>
-              {i.isDemo && <Badge tone="accent" className="ml-1">{d.result.tagDemo}</Badge>}
+              {i.isDemo && (
+                <Badge tone="accent" className="ml-1">
+                  {d.result.tagDemo}
+                </Badge>
+              )}
               <span className="block text-muted">
                 {i.sourceName} · {i.geo} · {d.result.observed} {formatDateTime(i.observedAt, lang)}
                 {i.metric ? ` · ${i.metric}` : ""}
@@ -481,6 +505,232 @@ function PlatformVersions({ versions }: { versions: CaptionResult["platformVersi
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** v2 output: one tab per selected platform; recommended option first, the other two collapsed. */
+function PlatformResults({
+  result,
+  conversationId,
+  messageId,
+  primaryPlatform,
+  statusByTag,
+  trendTitles,
+}: {
+  result: CaptionResult;
+  conversationId: string;
+  messageId: string;
+  primaryPlatform: string;
+  statusByTag: Map<string, ClientHashtagStatus>;
+  trendTitles: string[];
+}) {
+  const { d } = useI18n();
+  const t = d.output;
+  const [active, setActive] = useState(result.platforms[0]?.platform ?? primaryPlatform);
+  const current = result.platforms.find((p) => p.platform === active) ?? result.platforms[0];
+  if (!current) return null;
+  const rec = current.options.find((o) => o.kind === current.recommended) ?? current.options[0];
+  const others = current.options.filter((o) => o !== rec);
+
+  return (
+    <div>
+      {result.platforms.length > 1 && (
+        <div role="tablist" aria-label={t.platformsLabel} className="mb-3 flex gap-1 overflow-x-auto border-b border-line">
+          {result.platforms.map((p) => (
+            <button
+              key={p.platform}
+              role="tab"
+              type="button"
+              aria-selected={p.platform === current.platform}
+              onClick={() => setActive(p.platform)}
+              className={cx(
+                "shrink-0 border-b-2 px-3 py-1.5 text-sm font-semibold",
+                p.platform === current.platform ? "border-brand text-brand" : "border-transparent text-muted hover:text-fg",
+              )}
+            >
+              {getPlatform(p.platform).label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div role="tabpanel" className="space-y-3">
+        <OptionBlock
+          key={`${current.platform}-${rec.kind}`}
+          option={rec}
+          recommended
+          platformId={current.platform}
+          savable={current.platform === primaryPlatform}
+          conversationId={conversationId}
+          messageId={messageId}
+          statusByTag={statusByTag}
+          trendTitles={trendTitles}
+        />
+        {others.length > 0 && (
+          <details className="rounded-lg border border-line p-2">
+            <summary className="cursor-pointer text-sm font-semibold text-muted">{t.alternatives(others.length)}</summary>
+            <div className="mt-2 space-y-3">
+              {others.map((o) => (
+                <OptionBlock
+                  key={`${current.platform}-${o.kind}`}
+                  option={o}
+                  recommended={false}
+                  platformId={current.platform}
+                  savable={current.platform === primaryPlatform}
+                  conversationId={conversationId}
+                  messageId={messageId}
+                  statusByTag={statusByTag}
+                  trendTitles={trendTitles}
+                />
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FieldMeter({ text, limit }: { text: string; limit: LengthLimit | undefined }) {
+  const { d } = useI18n();
+  if (!limit) return null;
+  const over = text.length > limit.max;
+  return (
+    <span className={cx("text-[11px] tabular-nums", over ? "font-semibold text-danger" : "text-muted")}>
+      {d.output.chars(text.length, limit.max)}
+      {limit.status === "unverified" ? ` · ${d.output.unverifiedLimit}` : ""}
+      {over ? ` · ${d.output.overLimit}` : ""}
+    </span>
+  );
+}
+
+function OptionBlock({
+  option,
+  recommended,
+  platformId,
+  savable,
+  conversationId,
+  messageId,
+  statusByTag,
+  trendTitles,
+}: {
+  option: ResultOption;
+  recommended: boolean;
+  platformId: string;
+  savable: boolean;
+  conversationId: string;
+  messageId: string;
+  statusByTag: Map<string, ClientHashtagStatus>;
+  trendTitles: string[];
+}) {
+  const { d } = useI18n();
+  const t = d.output;
+  const adapter = adapterFor(platformId);
+  const platform = getPlatform(platformId);
+  const yt = adapter.fields.includes("title");
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(option.title);
+  const [body, setBody] = useState(yt ? option.description : option.caption);
+  const [tagsText, setTagsText] = useState(option.hashtags.join(" "));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const tags = dedupeHashtags(tagsText.split(/\s+/));
+  const rule = platform.hashtagRule;
+  const copyTags = hashtagsForCopy(tags, rule.copyDefault, rule.hardLimit);
+  const bodyLabel = yt ? t.description : t.caption;
+  const all = yt ? `${title}\n\n${captionWithHashtags(body, copyTags)}` : captionWithHashtags(body, copyTags);
+
+  async function save() {
+    setSaveState("saving");
+    const res = await fetch("/api/variants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversationId,
+        messageId,
+        variantId: KIND_TO_VARIANT[option.kind],
+        platform: platformId,
+        text: yt ? `${title}\n\n${body}` : body,
+        hashtags: tags,
+      }),
+    });
+    setSaveState(res.ok ? "saved" : "error");
+    if (res.ok) setEditing(false);
+  }
+
+  return (
+    <div className={cx("rounded-lg border p-3", recommended ? "border-brand bg-brand-soft/40" : "border-line")}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Badge tone="brand">{t.kinds[option.kind]}</Badge>
+        {recommended && <Badge tone="ok">{t.recommended}</Badge>}
+      </div>
+      {option.why && (
+        <p className="mb-2 text-xs text-muted">
+          <span className="font-semibold">{t.why}:</span> {option.why}
+        </p>
+      )}
+
+      {yt && (
+        <div className="mb-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">{t.title}</p>
+            <FieldMeter text={title} limit={adapter.limits.title} />
+          </div>
+          {editing ? (
+            <Input aria-label={t.title} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} />
+          ) : (
+            <p className="text-[15px] font-semibold">{title}</p>
+          )}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">{bodyLabel}</p>
+        <FieldMeter text={body} limit={yt ? adapter.limits.description : adapter.limits.caption} />
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <Textarea aria-label={d.result.editCaption} value={body} onChange={(e) => setBody(e.target.value)} rows={5} maxLength={5000} />
+          <label className="text-xs font-semibold" htmlFor={`v2tags-${messageId}-${platformId}-${option.kind}`}>
+            {d.result.hashtagsSpace}
+          </label>
+          <Textarea
+            id={`v2tags-${messageId}-${platformId}-${option.kind}`}
+            value={tagsText}
+            onChange={(e) => setTagsText(e.target.value)}
+            rows={2}
+            className="min-h-0"
+          />
+        </div>
+      ) : (
+        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{body}</p>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-1">
+        {tags.map((tag) => (
+          <TagChip key={tag} tag={tag} status={statusByTag.get(tag.toLowerCase())} />
+        ))}
+      </div>
+      <PackagingCheck text={yt ? title : body} tags={tags} platformId={platformId} trendTitles={trendTitles} />
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {yt && <CopyButton text={title} label={t.copyTitle} />}
+        <CopyButton text={body} label={yt ? t.copyDescription : t.copyCaption} />
+        <CopyButton text={copyTags.join(" ")} label={d.result.copyHashtags} />
+        <CopyButton text={all} label={yt ? t.copyAll : d.result.copyFor(platform.label)} variant="primary" />
+        <Button size="sm" variant="ghost" onClick={() => setEditing((e) => !e)}>
+          {!editing && <Pencil aria-hidden className="h-3.5 w-3.5" />}
+          {editing ? d.common.doneEditing : d.common.edit}
+        </Button>
+        {savable && (
+          <Button size="sm" variant="secondary" onClick={save} disabled={saveState === "saving"}>
+            {saveState === "saving" ? d.common.saving : saveState === "saved" ? `${d.common.saved} ✓` : d.common.save}
+          </Button>
+        )}
+        {saveState === "error" && (
+          <span role="alert" className="text-xs text-danger">
+            {d.result.saveFailed}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { getPlatform } from "@/lib/domain/platforms";
+import { adapterFor, wordingLabel } from "@/lib/domain/platform-adapters";
 import { labelFor, GOALS, LANGUAGES, LENGTHS, REGIONS, TONES } from "@/lib/domain/options";
 import type { BriefProviderRequest, CaptionRequest } from "./types";
 
@@ -18,19 +19,24 @@ Caption rules:
 - Write the caption itself, in the creator's own voice (first person, as they would post it), speaking to viewers. Never write instructions to the creator such as "video banayein" or "show that…".
 - Keep the creator's actual topic, intent and supplied facts, including when things happened (aaj/kal). Do not change what the video is about.
 - Improve clarity, curiosity, specificity, rhythm and audience fit.
-- Write in the requested language with natural phrasing. Hinglish means Roman-script Hindi-English mix as Indian creators actually write it. Hindi means Devanagari unless the creator writes otherwise.
-- Never fabricate achievements, results, endorsements, prices, statistics, product features, follower counts or current events. No invented claims like "99% log ye nahi jaante".
+- Write in the requested language with natural phrasing, and keep it everywhere: titles, descriptions, captions, hooks, CTAs and every "why". Hinglish means Roman-script Hindi-English mix as Indian creators actually write it (no Devanagari unless the creator used it). Hindi means Devanagari (no stray English sentences).
+- Never fabricate achievements, results, endorsements, prices, statistics, product features, follower counts, quotes or current events. No invented claims like "99% log ye nahi jaante".
+- Never invent first-person experiences the creator did not describe, giveaways, "follow for shoutout", insider access, or promises of reach.
 - No deceptive clickbait, unrelated sensationalism, engagement bait ("comment karo warna..."), or hashtag stuffing.
 - Never promise or imply guaranteed virality, reach, or algorithm access.
-- The three variants must differ in creative approach (for example: story-first, question/curiosity hook, practical value/list, relatable humour), not just synonyms. Each option opens with a different first line; none of them is simply the creator's original text repeated.
+- For each platform write exactly three options, one of each kind:
+  original_improved — keeps the creator's meaning and voice, just clearer and stronger;
+  search_focused — uses the natural topic terms people actually search (names, competition, topic), no keyword stuffing;
+  conversation_focused — invites a meaningful reply about the video (not "comment below for shoutout").
+  Each option opens with a different first line; none is simply the creator's original text repeated.
 - Respect every constraint in <context>: platform, tone, length, emoji preference, terms to preserve exactly, a locked first line, and sticky notes. A lockedFirstLine means every option starts with exactly that line and then continues with new text.
 - On follow-ups, start from the previous options in <conversation_so_far> and apply the latest request so the change is clearly visible (for example, "short" means each caption is noticeably shorter than before).
 - Hooks are short spoken opening lines in words (under 12 words), not emoji alone.
-- recommendationReason explains the fit with this creator's content and goal. Do not claim how a format "performs" on a platform.
+- Each option's "why" is one short, specific sentence about fit with this video, audience and goal. Pick the best one as "recommended". Do not claim how a format "performs" on a platform.
 - If outputMode is "final_only", still fill every field, but keep hooks, keywords, improvements and assumptions to the minimum useful (they may be empty arrays).
 
 Hashtags:
-- Suggest a small set of hashtags clearly relevant to the topic and audience. Mix broad and specific. Each hashtag is one to three words joined together. Put hashtags only in the hashtag fields, never inside caption text. You have no live trend data, so never describe any hashtag as trending, viral or popular. Each suggestion gets a short relevance reason.
+- Suggest a small set of hashtags clearly relevant to the topic and audience. Mix broad and specific. Each hashtag is one to three words joined together. Put hashtags only in the hashtag fields, never inside caption text. You have no live trend data, so never describe any hashtag as trending, viral or popular. Never use filler tags such as #viral, #fyp, #foryou, #trending, #explore or #explorepage. Each suggestion gets a short relevance reason.
 - Stay at or under the platform's configured hashtag limit given in <context>.
 
 Sports captions (when <evidence_notes> has MATCH, MATCH RULE, MATCH UNCONFIRMED or SPORTS lines):
@@ -41,8 +47,11 @@ Sports captions (when <evidence_notes> has MATCH, MATCH RULE, MATCH UNCONFIRMED 
 - If no match is verified, keep match references general (no dates, results or live claims).
 - Search-interest and reference lines are context, not facts about the match; never call anything viral or trending.
 
-Per-platform versions:
-- If "alsoFor" in <context> lists platforms, fill platformVersions with one version of the recommended option per listed platform id, adapted to that platform's conventions and hashtag limit. Otherwise platformVersions is an empty array.
+Platforms:
+- Write one "platforms" entry per platform in <context>.platforms, primary first, using its id.
+- Follow that platform's rules in <context>: fill only its fields (YouTube: title + description, caption empty; Instagram/Facebook/TikTok: caption, title and description empty), stay within its length limits, put hashtags where it says and within its count, use its CTA style and tone notes.
+- Never use wording that belongs to another platform (listed as "neverSay"), e.g. no "Reel" or "link in bio" on YouTube, no "subscribe" or "Shorts" on Instagram. Switching platform must change wording, structure and CTA — not just the hashtags.
+- Match identity and verified facts are the same on every platform and in every follow-up.
 
 If something essential is missing, state a reasonable assumption in "assumptions" and optionally ask one focused question in "clarifyingQuestion". Still produce useful variants.`;
 
@@ -77,12 +86,20 @@ function ctxBlock(req: CaptionRequest): string {
       outputMode: c.outputMode,
       stickyNotes: c.notes,
       hashtagLimitForThisPlatform: rule.hardLimit ?? `no documented limit; suggest about ${rule.copyDefault}`,
-      alsoFor: c.extraPlatforms
-        .filter((p) => p !== c.platform)
-        .map((p) => {
-          const r = getPlatform(p).hashtagRule;
-          return { id: p, name: getPlatform(p).label, hashtagLimit: r.hardLimit ?? r.copyDefault };
-        }),
+      platforms: [c.platform, ...c.extraPlatforms.filter((p) => p !== c.platform)].map((p) => {
+        const r = getPlatform(p).hashtagRule;
+        const a = adapterFor(p);
+        return {
+          id: p,
+          name: getPlatform(p).label,
+          fields: a.fields,
+          maxLength: Object.fromEntries(Object.entries(a.limits).map(([f, l]) => [f, l!.max])),
+          hashtags: { max: Math.min(r.hardLimit ?? r.copyDefault, r.copyDefault + 2), placement: a.hashtagPlacement },
+          cta: a.ctaStyle,
+          tone: a.toneNotes,
+          neverSay: a.forbiddenWording.map(wordingLabel),
+        };
+      }),
       publishTime: c.publishAt ?? "now",
     },
     null,
