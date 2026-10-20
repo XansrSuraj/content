@@ -142,9 +142,10 @@ async function chat(
   messages: ChatMessage[],
   format: Record<string, unknown>,
   onProgress?: ProgressFn,
+  cancel?: AbortSignal,
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; model: string; truncated: boolean }> {
   let res: Response;
-  const signal = AbortSignal.timeout(s.timeoutMs);
+  const signal = cancel ? AbortSignal.any([AbortSignal.timeout(s.timeoutMs), cancel]) : AbortSignal.timeout(s.timeoutMs);
   try {
     res = await fetchImpl(`${s.baseUrl}/api/chat`, {
       method: "POST",
@@ -162,6 +163,7 @@ async function chat(
     });
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
+    if (cancel?.aborted) throw new ProviderError("cancelled", "Stopped.", false);
     if (name === "TimeoutError" || name === "AbortError") throw timeoutError(s);
     throw new ProviderError(
       "local_unavailable",
@@ -187,6 +189,7 @@ async function chat(
     streamed = await readChatStream(res, onProgress);
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
+    if (cancel?.aborted) throw new ProviderError("cancelled", "Stopped.", false);
     if (name === "TimeoutError" || name === "AbortError" || signal.aborted) throw timeoutError(s);
     throw new ProviderError("upstream_error", "The connection to Ollama broke while it was writing.", true);
   }
@@ -260,6 +263,7 @@ async function structured<T>(
   strictSchema: z.ZodType<T>,
   checklist = "",
   onProgress?: ProgressFn,
+  cancel?: AbortSignal,
 ): Promise<{ data: T; inputTokens: number; outputTokens: number; model: string; repaired: boolean }> {
   const format = jsonSchemaFor(modelSchema);
   // The `format` grammar already enforces structure, so only a one-line field guide goes in the
@@ -276,7 +280,7 @@ async function structured<T>(
   let lastContent = "";
   let lastIssues = "";
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const out = await chat(s, fetchImpl, messages, format, onProgress);
+    const out = await chat(s, fetchImpl, messages, format, onProgress, cancel);
     inputTokens += out.inputTokens;
     outputTokens += out.outputTokens;
     lastContent = out.content;
@@ -331,6 +335,7 @@ export class OllamaCaptionProvider implements CaptionProvider {
       LocalCaptionStrict,
       CAPTION_CHECKLIST,
       req.onProgress,
+      req.signal,
     );
     return {
       data: out.data,

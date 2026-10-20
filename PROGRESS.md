@@ -107,6 +107,16 @@ Keep this file current so work can resume across sessions.
 - Deploy keys live only in `.env.deploy` (gitignored).
 - Known model issue (gpt-oss-20b): occasionally invents small facts (e.g. "Camera 7-star", "charge twice a day"). The UI keeps the "check facts before posting" note.
 
+## Session 6 (2026-10-20): chat-app grade Caption Studio
+- **Speed:** the creator's message appears instantly. The URL and sidebar update without a reload (`history.replaceState`).
+- **Composer:** Enter sends, Shift+Enter adds a new line, and touch keyboards use Enter for a new line. Nothing sends while an IME (Hindi) is composing. The box auto-grows up to 220 px.
+- **Stop:** the Stop button and Esc cancel the request. The cancel signal goes through the route, service and providers (Ollama / OpenAI-compatible fetch aborted); nothing is saved and the text goes back to the box.
+- **Scrolling:** a separate chat scroll area pinned to the bottom with a ResizeObserver. It stops following when the user scrolls up, and a "↓" button appears.
+- **History:** older replies collapse to the recommended caption plus "Show all 3 options & details". There's a "Copy all" button and "↻ Naye options" (regenerate, optional tone), starter prompts on an empty chat, and per-conversation drafts in localStorage.
+- **Sidebar:** grouped Today / Yesterday / Previous 7 days / Older, with search. Rename and delete update instantly.
+- **Server:** one hashtag-evidence query per conversation load (was one per message).
+- **Tests:** the new E2E "chat composer behaves like a chat app" test, 8/8 E2E, 94 unit.
+
 ## Next steps
 - Set `ADMIN_EMAILS` on Render to the owner's email.
 - Optional: make the GitHub repo private; add GitHub Actions secrets for background trend refresh.

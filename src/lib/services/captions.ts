@@ -75,7 +75,7 @@ export async function runCaptionTurn(
   user: SessionUser,
   input: CaptionTurnInput,
   provider: CaptionProvider = getCaptionProvider(),
-  opts: { onProgress?: (p: { tokens: number; text: string }) => void } = {},
+  opts: { onProgress?: (p: { tokens: number; text: string }) => void; signal?: AbortSignal } = {},
 ): Promise<{ ok: true; value: TurnSuccess } | { ok: false; error: TurnError }> {
   const cfg = config();
   if (input.message.length > cfg.ai.maxInputChars) {
@@ -150,6 +150,7 @@ ${input.message}`, { includeDemo: user.isDemo && cfg.demoEnabled })
         : null,
       evidenceNotes,
       onProgress: opts.onProgress,
+      signal: opts.signal,
     });
   } catch (err) {
     const pe = err instanceof ProviderError ? err : new ProviderError("upstream_error", "Unexpected provider failure.", true);
@@ -165,6 +166,10 @@ ${input.message}`, { includeDemo: user.isDemo && cfg.demoEnabled })
     return { ok: false, error: { kind: "provider", code: pe.code, message: pe.message, retryable: pe.retryable } };
   }
 
+  // Stopped after the model finished: honour it and save nothing.
+  if (opts.signal?.aborted) {
+    return { ok: false, error: { kind: "provider", code: "cancelled", message: "Stopped.", retryable: true } };
+  }
   const result = flagUnmetRequests(enforceConstraints(output.data, context), applied, history);
 
   if (!conversation) {
@@ -244,4 +249,17 @@ export async function hashtagStatusesFor(
   const tags = [...result.hashtagSuggestions.map((h) => h.tag), ...result.variants.flatMap((v) => v.hashtags)];
   const evidence = await hashtagEvidence(db, tags, user.isDemo);
   return classifyHashtags(tags, evidence, platform);
+}
+
+/** Same as hashtagStatusesFor, for many results at once: one evidence query for the whole conversation. */
+export async function hashtagStatusesForMany(
+  db: DB,
+  user: SessionUser,
+  results: (CaptionResult | null)[],
+  platform: string,
+): Promise<HashtagStatus[][]> {
+  const tagsOf = (r: CaptionResult) => [...r.hashtagSuggestions.map((h) => h.tag), ...r.variants.flatMap((v) => v.hashtags)];
+  const all = results.flatMap((r) => (r ? tagsOf(r) : []));
+  const evidence = all.length ? await hashtagEvidence(db, all, user.isDemo) : new Map();
+  return results.map((r) => (r ? classifyHashtags(tagsOf(r), evidence, platform) : []));
 }

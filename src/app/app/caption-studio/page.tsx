@@ -7,7 +7,7 @@ import { getConversation, listConversations, listMessages } from "@/lib/repo/stu
 import { getBrief } from "@/lib/repo/work";
 import { getOpportunity } from "@/lib/repo/discovery";
 import { BriefContentSchema } from "@/lib/domain/briefs";
-import { hashtagStatusesFor } from "@/lib/services/captions";
+import { hashtagStatusesForMany } from "@/lib/services/captions";
 import { toClientMessage, type ClientMessage } from "@/lib/services/serialize";
 import { isPlatformId } from "@/lib/domain/platforms";
 import { config } from "@/lib/config";
@@ -28,13 +28,12 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
   if (conv) {
     const ctx = CaptionContextSchema.parse(conv.context);
     const raw = await listMessages(db, user.id, conv.id);
-    messages = await Promise.all(
-      raw.map(async (m) => {
-        const r = m.result ? CaptionResultSchema.safeParse(m.result) : null;
-        const statuses = r?.success ? await hashtagStatusesFor(db, user, r.data, ctx.platform) : [];
-        return toClientMessage(m, statuses);
-      }),
-    );
+    const parsed = raw.map((m) => {
+      const r = m.result ? CaptionResultSchema.safeParse(m.result) : null;
+      return r?.success ? r.data : null;
+    });
+    const statuses = await hashtagStatusesForMany(db, user, parsed, ctx.platform);
+    messages = raw.map((m, i) => toClientMessage(m, statuses[i]));
   }
 
   const baseContext = conv

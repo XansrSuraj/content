@@ -22,25 +22,61 @@ export function ResultCard({
   conversationId,
   platformId,
   outputMode,
+  compact = false,
 }: {
   message: ClientMessage;
   result: CaptionResult;
   conversationId: string;
   platformId: string;
   outputMode: "full" | "final_only";
+  /** Older replies collapse to the recommended caption, like chat apps keep history scannable. */
+  compact?: boolean;
 }) {
   const platform = getPlatform(platformId);
   const mode = message.mode ? MODE_LABEL[message.mode] : null;
   const [showAll, setShowAll] = useState(outputMode === "full");
+  const [expanded, setExpanded] = useState(false);
   const recommended = result.variants.find((v) => v.id === result.recommendedVariantId) ?? result.variants[0];
   const ordered = [recommended, ...result.variants.filter((v) => v.id !== recommended.id)];
   const statusByTag = new Map(message.hashtags.map((h) => [h.tag.toLowerCase(), h]));
+  const allText = ordered.map((v) => `Option ${v.id} (${v.approach}):\n${captionWithHashtags(v.caption, v.hashtags)}`).join("\n\n");
+
+  if (compact && !expanded) {
+    return (
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
+          {mode && <Badge tone={mode.tone}>{mode.text}</Badge>}
+          <span className="text-xs text-muted">
+            Recommended: Option {recommended.id} · {recommended.approach}
+          </span>
+        </div>
+        <div className="p-4">
+          <p className="line-clamp-4 whitespace-pre-wrap text-[15px] leading-relaxed">{recommended.caption}</p>
+          <p className="mt-1 truncate text-xs text-muted">{recommended.hashtags.join(" ")}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <CopyButton text={captionWithHashtags(recommended.caption, recommended.hashtags)} label="Copy" />
+            <Button size="sm" variant="ghost" onClick={() => setExpanded(true)}>
+              Show all 3 options & details
+            </Button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="max-w-3xl overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
         {mode && <Badge tone={mode.tone}>{mode.text}</Badge>}
         <span className="text-xs text-muted">For {platform.label}</span>
+        <span className="ml-auto flex items-center gap-1">
+          <CopyButton text={allText} label="Copy all" variant="ghost" />
+          {compact && (
+            <Button size="sm" variant="ghost" onClick={() => setExpanded(false)}>
+              Collapse
+            </Button>
+          )}
+        </span>
       </div>
 
       <div className="space-y-4 p-4">

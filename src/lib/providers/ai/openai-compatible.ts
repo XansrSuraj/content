@@ -48,7 +48,14 @@ interface Msg {
   content: string;
 }
 
-async function complete(s: OpenAICompatSettings, fetchImpl: FetchLike, messages: Msg[], schemaName: string, schema: Record<string, unknown>) {
+async function complete(
+  s: OpenAICompatSettings,
+  fetchImpl: FetchLike,
+  messages: Msg[],
+  schemaName: string,
+  schema: Record<string, unknown>,
+  cancel?: AbortSignal,
+) {
   const body: Record<string, unknown> = {
     model: s.model,
     messages,
@@ -65,10 +72,11 @@ async function complete(s: OpenAICompatSettings, fetchImpl: FetchLike, messages:
       method: "POST",
       headers: { "Content-Type": "application/json", ...(s.apiKey ? { Authorization: `Bearer ${s.apiKey}` } : {}) },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(s.timeoutMs),
+      signal: cancel ? AbortSignal.any([AbortSignal.timeout(s.timeoutMs), cancel]) : AbortSignal.timeout(s.timeoutMs),
     });
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
+    if (cancel?.aborted) throw new ProviderError("cancelled", "Stopped.", false);
     if (name === "TimeoutError" || name === "AbortError") throw new ProviderError("timeout", `${s.hostLabel} took too long to respond.`, true);
     throw new ProviderError("upstream_error", `Could not reach ${s.hostLabel}. Check the internet connection and retry.`, true);
   }
@@ -103,6 +111,7 @@ async function structured<T>(
   schemaName: string,
   modelSchema: z.ZodType,
   strict: z.ZodType<T>,
+  cancel?: AbortSignal,
 ) {
   const schema = jsonSchemaFor(modelSchema);
   const messages: Msg[] = [
@@ -113,7 +122,7 @@ async function structured<T>(
   let inputTokens = 0;
   let outputTokens = 0;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const out = await complete(s, fetchImpl, messages, schemaName, schema);
+    const out = await complete(s, fetchImpl, messages, schemaName, schema, cancel);
     inputTokens += out.inputTokens;
     outputTokens += out.outputTokens;
     const json = extractJson(out.content);
@@ -137,7 +146,7 @@ export class OpenAICompatCaptionProvider implements CaptionProvider {
   ) {}
 
   async generate(req: CaptionRequest): Promise<ProviderOutput<CaptionResult>> {
-    const out = await structured(this.settings, this.fetchImpl, CAPTION_SYSTEM_PROMPT, buildCaptionUserPrompt(req), "caption_result", CaptionModelOutputSchema, CaptionResultSchema);
+    const out = await structured(this.settings, this.fetchImpl, CAPTION_SYSTEM_PROMPT, buildCaptionUserPrompt(req), "caption_result", CaptionModelOutputSchema, CaptionResultSchema, req.signal);
     return { data: out.data, mode: "open_model", usage: { inputTokens: out.inputTokens, outputTokens: out.outputTokens, model: out.model } };
   }
 }

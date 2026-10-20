@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CaptionContext } from "@/lib/domain/captions";
 import { TONES } from "@/lib/domain/options";
 import { getPlatform } from "@/lib/domain/platforms";
 import type { ClientMessage } from "@/lib/services/serialize";
 import { t, type UiLang } from "@/lib/i18n";
-import { Badge, Button, Notice, Select, Textarea, cx } from "@/components/ui";
+import { Badge, Button, Notice, Select, cx } from "@/components/ui";
 import { ContextPanel } from "./context-panel";
 import { ConversationList, type ConvSummary } from "./conversation-list";
 import { ResultCard } from "./result-card";
@@ -22,7 +21,32 @@ const QUICK_FOLLOWUPS = [
   "Sirf final caption aur hashtags do.",
 ];
 
+const STARTERS = [
+  "Aaj maine apne budget phone se cinematic video shoot kiya. Instagram ke liye better Hinglish caption aur hashtags do.",
+  "Ghar par cafe-style chai banayi, tapri wali feel ke saath. Reel ke liye funny caption do.",
+  "Exam se pehle 3 study tips ka video banaya. YouTube Shorts ke liye title aur caption do.",
+];
+
 type ApiErr = { code: string; message: string; retryable?: boolean; retryAfterSeconds?: number };
+type Live = { tokens: number; preview: string; startedAt: number };
+type TurnResult = { conversationId: string; context: CaptionContext; applied: string[]; userMessage: ClientMessage; assistantMessage: ClientMessage };
+
+const draftKey = (id: string | null) => `ts-draft:${id ?? "new"}`;
+function readDraft(id: string | null): string | null {
+  try {
+    return window.localStorage.getItem(draftKey(id));
+  } catch {
+    return null;
+  }
+}
+function writeDraft(id: string | null, value: string) {
+  try {
+    if (value.trim()) window.localStorage.setItem(draftKey(id), value);
+    else window.localStorage.removeItem(draftKey(id));
+  } catch {
+    /* storage unavailable (private mode) — drafts just aren't kept */
+  }
+}
 
 export function Studio(props: {
   conversations: ConvSummary[];
@@ -35,8 +59,8 @@ export function Studio(props: {
   uiLanguage: UiLang;
   isDemo: boolean;
 }) {
-  const router = useRouter();
   const [conversationId, setConversationId] = useState(props.conversationId);
+  const [conversations, setConversations] = useState(props.conversations);
   const [messages, setMessages] = useState(props.initialMessages);
   const [context, setContext] = useState<CaptionContext>(props.initialContext);
   const [draft, setDraft] = useState(props.prefill);
@@ -46,37 +70,117 @@ export function Studio(props: {
   const [applied, setApplied] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [regenTone, setRegenTone] = useState(context.tone);
-  const [live, setLive] = useState<{ tokens: number; preview: string; startedAt: number } | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const [regenTone, setRegenTone] = useState(props.initialContext.tone);
+  const [live, setLive] = useState<Live | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  /** True while the view should follow new content (like chat apps); false once the user scrolls up. */
+  const stickRef = useRef(true);
+  const programmaticRef = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const lang = props.uiLanguage;
-  const isFirstTurn = messages.length === 0;
+  const isEmpty = messages.length === 0;
   const platform = getPlatform(context.platform);
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+
+  // Restore an unsent draft for this conversation (unless the page was opened with a prefill).
+  useEffect(() => {
+    if (!props.prefill) {
+      const saved = readDraft(props.conversationId);
+      // localStorage only exists after mount; reading it during render would break hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved) setDraft(saved);
+    }
+    // Focus the composer on desktop, like chat apps do.
+    if (window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus();
+  }, [props.conversationId, props.prefill]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, pending]);
+    writeDraft(conversationId, draft);
+  }, [conversationId, draft]);
+
+  // Auto-grow the composer up to ~8 lines.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [draft]);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    programmaticRef.current = true;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      programmaticRef.current = false;
+    });
+  }, []);
+
+  // Follow content as it grows (new messages, streaming preview, cards expanding) while pinned.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const ro = new ResizeObserver(() => {
+      if (stickRef.current) scrollToBottom();
+    });
+    ro.observe(content);
+    scrollToBottom();
+    return () => ro.disconnect();
+  }, [scrollToBottom]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el || programmaticRef.current) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickRef.current = near;
+    setAtBottom(near);
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
 
   async function send(message: string, ctx: CaptionContext = context) {
     const text = message.trim();
     if (!text || pending) return;
+    const tempId = `tmp-${Date.now()}`;
+    // Optimistic: the creator's message appears immediately.
+    setMessages((m) => [
+      ...m,
+      { id: tempId, role: "user", text, mode: null, result: null, hashtags: [], contextUsed: null, createdAt: new Date().toISOString() },
+    ]);
+    setDraft("");
     setPending(true);
     setError(null);
+    setApplied([]);
+    stickRef.current = true;
+    setAtBottom(true);
     setLastSent({ message: text, context: ctx });
     setLive({ tokens: 0, preview: "", startedAt: Date.now() });
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const dropTemp = () => setMessages((m) => m.filter((x) => x.id !== tempId));
     try {
       const res = await fetch("/api/captions/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ conversationId, message: text, context: ctx, opportunityId: props.opportunityId }),
+        signal: controller.signal,
       });
       // Errors before streaming starts (auth, validation, origin) come back as plain JSON.
       if (!res.ok || !res.body || !res.headers.get("content-type")?.includes("ndjson")) {
         const data = await res.json().catch(() => null);
+        dropTemp();
+        setDraft(text);
         setError(data?.error ?? { code: "network", message: "Something went wrong. Please try again.", retryable: true });
         return;
       }
-      let data: { conversationId: string; context: CaptionContext; applied: string[]; userMessage: ClientMessage; assistantMessage: ClientMessage } | null = null;
+      let data: TurnResult | null = null;
+      let streamError: ApiErr | null = null;
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -88,46 +192,97 @@ export function Studio(props: {
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.trim()) continue;
-          const evt = JSON.parse(line);
-          if (evt.type === "progress") setLive((l) => (l ? { ...l, tokens: evt.tokens, preview: evt.preview || l.preview } : l));
-          else if (evt.type === "error") setError(evt.error);
-          else if (evt.type === "result") data = evt;
+          let evt: { type: string; tokens?: number; preview?: string; error?: ApiErr } & Partial<TurnResult>;
+          try {
+            evt = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          if (evt.type === "progress") setLive((l) => (l ? { ...l, tokens: evt.tokens ?? l.tokens, preview: evt.preview || l.preview } : l));
+          else if (evt.type === "error") streamError = evt.error ?? null;
+          else if (evt.type === "result") data = evt as unknown as TurnResult;
         }
       }
-      if (!data) return;
-      setMessages((m) => [...m, data.userMessage, data.assistantMessage]);
-      setContext(data.context);
-      setApplied(data.applied ?? []);
-      setDraft("");
-      if (!conversationId) {
-        setConversationId(data.conversationId);
-        router.replace(`/app/caption-studio?c=${data.conversationId}`, { scroll: false });
-        router.refresh();
+      if (!data) {
+        dropTemp();
+        setDraft(text);
+        if (streamError?.code !== "cancelled") setError(streamError ?? { code: "network", message: "The connection closed early. Please retry.", retryable: true });
+        return;
       }
-    } catch {
-      setError({ code: "network", message: "Network error. Check your connection and retry.", retryable: true });
+      const result: TurnResult = data;
+      setMessages((m) => [...m.filter((x) => x.id !== tempId), result.userMessage, result.assistantMessage]);
+      setContext(result.context);
+      setApplied(result.applied ?? []);
+      if (!conversationId) {
+        // Seamless like chat apps: update the URL and sidebar without reloading the page.
+        setConversationId(result.conversationId);
+        writeDraft(null, "");
+        window.history.replaceState(null, "", `/app/caption-studio?c=${result.conversationId}`);
+        const line = text.split(/\r?\n/).find((l) => l.trim()) ?? text;
+        setConversations((c) => [
+          { id: result.conversationId, title: line.length > 60 ? `${line.slice(0, 57)}…` : line, updatedAt: new Date().toISOString(), isExample: false },
+          ...c,
+        ]);
+      } else {
+        setConversations((c) => {
+          const cur = c.find((x) => x.id === conversationId);
+          return cur ? [{ ...cur, updatedAt: new Date().toISOString() }, ...c.filter((x) => x.id !== conversationId)] : c;
+        });
+      }
+    } catch (err) {
+      dropTemp();
+      setDraft(text);
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        setError({ code: "network", message: "Network error. Check your connection and retry.", retryable: true });
+      }
     } finally {
+      abortRef.current = null;
       setPending(false);
       setLive(null);
+      if (window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus();
     }
   }
 
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Never send while an IME (e.g. Hindi/Devanagari input) is composing a word.
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === "Escape" && pending) {
+      e.preventDefault();
+      stop();
+      return;
+    }
+    if (e.key !== "Enter") return;
+    // Desktop: Enter sends, Shift+Enter is a new line. Touch keyboards: Enter is a new line (Send button sends).
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+    if ((e.ctrlKey || e.metaKey) || (!e.shiftKey && !touch)) {
+      e.preventDefault();
+      send(draft);
+    }
+  }
+
+  function regenerate() {
+    const ctx = { ...context, tone: regenTone };
+    setContext(ctx);
+    send(
+      regenTone === context.tone ? "Wahi topic, teen naye aur alag options do." : `Same topic, teen naye options ${regenTone} tone mein do.`,
+      ctx,
+    );
+  }
 
   return (
-    <div className="-mx-4 -my-6 grid min-h-[calc(100dvh-49px)] md:grid-cols-[240px_1fr] lg:grid-cols-[240px_1fr_300px]">
+    <div className="-mx-4 -my-6 grid h-[calc(100dvh-49px-4rem)] md:h-[calc(100dvh-49px)] md:grid-cols-[260px_1fr] lg:grid-cols-[260px_1fr_300px]">
       {/* Conversation list: drawer on mobile, column on desktop */}
-      <div className={cx("border-r border-line bg-surface md:block", listOpen ? "fixed inset-0 z-40 block overflow-y-auto pt-2" : "hidden")}>
+      <div className={cx("min-h-0 border-r border-line bg-surface md:block", listOpen ? "fixed inset-0 z-40 block overflow-y-auto pt-2" : "hidden")}>
         <div className="flex items-center justify-between px-3 py-2 md:hidden">
           <p className="font-semibold">Conversations</p>
           <Button variant="ghost" size="sm" onClick={() => setListOpen(false)}>
             Close
           </Button>
         </div>
-        <ConversationList items={props.conversations} activeId={conversationId} />
+        <ConversationList items={conversations} activeId={conversationId} onChange={setConversations} />
       </div>
 
-      <section className="flex min-w-0 flex-col">
+      <section className="flex min-h-0 min-w-0 flex-col">
         <div className="flex items-center gap-2 border-b border-line px-4 py-2 lg:hidden">
           <Button variant="secondary" size="sm" onClick={() => setListOpen(true)} className="md:hidden">
             Chats
@@ -146,147 +301,191 @@ export function Studio(props: {
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
-          {props.ai.kind === "none" && (
-            <Notice tone="warn" title="AI is not configured on this server">
-              Results are a <strong>template preview built from your own words</strong>, not AI rewrites.{" "}
-              {props.ai.note ?? <>To enable real generation for free, set <code>AI_PROVIDER=ollama</code> in <code>.env.local</code> (needs Ollama), or set {props.ai.missing.join(" and ")}. Then restart the server.</>}
-              {props.isDemo && " The example conversation in the list shows what live AI output looks like."}
-            </Notice>
-          )}
-          {props.ai.kind === "local" && isFirstTurn && (
-            <Notice tone="info" title="Local AI (development)">
-              Captions come from <code>{props.ai.model}</code> running on this computer via Ollama — free, but slower and
-              lower quality than the production model. Check every caption before posting.
-            </Notice>
-          )}
+        {/* Chat scroll area */}
+        <div ref={scrollRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto">
+          <div ref={contentRef} className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6">
+            {props.ai.kind === "none" && (
+              <Notice tone="warn" title="AI is not configured on this server">
+                Results are a <strong>template preview built from your own words</strong>, not AI rewrites.{" "}
+                {props.ai.note ?? (
+                  <>
+                    To enable real generation for free, set <code>AI_PROVIDER=ollama</code> in <code>.env.local</code> (needs Ollama), or set{" "}
+                    {props.ai.missing.join(" and ")}. Then restart the server.
+                  </>
+                )}
+                {props.isDemo && " The example conversation in the list shows what live AI output looks like."}
+              </Notice>
+            )}
+            {props.ai.kind === "local" && isEmpty && (
+              <Notice tone="info" title="Local AI (development)">
+                Captions come from <code>{props.ai.model}</code> running on this computer via Ollama — free, but slower and lower quality than
+                the production model. Check every caption before posting.
+              </Notice>
+            )}
 
-          {isFirstTurn && (
-            <div className="mx-auto max-w-2xl pt-4 text-center">
-              <h1 className="text-2xl font-bold">{t(lang, "studio")}</h1>
-              <p className="mt-1 text-sm text-muted">{t(lang, "studioLead")}</p>
-            </div>
-          )}
-
-          {messages.map((m) =>
-            m.role === "user" ? (
-              <div key={m.id} className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand px-4 py-2.5 text-sm text-brand-fg">
-                {m.text}
+            {isEmpty && (
+              <div className="pt-6 text-center">
+                <h1 className="text-2xl font-bold">{t(lang, "studio")}</h1>
+                <p className="mt-1 text-sm text-muted">{t(lang, "studioLead")}</p>
+                <div className="mt-6 grid gap-2 text-left sm:grid-cols-3">
+                  {STARTERS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setDraft(s);
+                        inputRef.current?.focus();
+                      }}
+                      className="rounded-xl border border-line bg-surface p-3 text-sm text-muted hover:border-brand hover:text-fg"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : m.result ? (
-              <ResultCard
-                key={m.id}
-                message={m}
-                result={m.result}
-                conversationId={conversationId!}
-                platformId={context.platform}
-                outputMode={m.id === lastAssistant?.id ? context.outputMode : "full"}
-              />
-            ) : null,
-          )}
+            )}
 
-          {pending && <LiveProgress live={live} kind={props.ai.kind} />}
+            {messages.map((m) =>
+              m.role === "user" ? (
+                <div key={m.id} className="flex justify-end">
+                  <div
+                    className={cx(
+                      "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand px-4 py-2.5 text-[15px] text-brand-fg",
+                      m.id.startsWith("tmp-") && "opacity-90",
+                    )}
+                  >
+                    {m.text}
+                  </div>
+                </div>
+              ) : m.result ? (
+                <ResultCard
+                  key={m.id}
+                  message={m}
+                  result={m.result}
+                  conversationId={conversationId!}
+                  platformId={context.platform}
+                  outputMode={m.id === lastAssistant?.id ? context.outputMode : "full"}
+                  compact={m.id !== lastAssistant?.id}
+                />
+              ) : null,
+            )}
 
-          {error && (
-            <Notice tone="danger" title={error.code === "quota" ? "Limit reached" : error.code === "local_unavailable" ? "Local AI unavailable" : "Couldn't generate captions"}>
-              <p>{error.message}</p>
-              {error.retryAfterSeconds ? <p className="mt-1">Try again in about {Math.ceil(error.retryAfterSeconds / 60)} min.</p> : null}
-              {error.retryable !== false && error.code !== "quota" && lastSent && (
-                <Button size="sm" variant="secondary" className="mt-2" onClick={() => send(lastSent.message, lastSent.context)}>
-                  Retry
+            {pending && <LiveProgress live={live} kind={props.ai.kind} />}
+
+            {error && (
+              <Notice
+                tone="danger"
+                title={error.code === "quota" || error.code === "upstream_rate_limited" ? "Limit reached" : error.code === "local_unavailable" ? "Local AI unavailable" : "Couldn't generate captions"}
+              >
+                <p>{error.message}</p>
+                {error.retryAfterSeconds ? <p className="mt-1">Try again in about {Math.ceil(error.retryAfterSeconds / 60)} min.</p> : null}
+                {error.retryable !== false && error.code !== "quota" && lastSent && (
+                  <Button size="sm" variant="secondary" className="mt-2" onClick={() => send(lastSent.message, lastSent.context)}>
+                    Retry
+                  </Button>
+                )}
+                {error.code === "auth_error" && <p className="mt-1">The server&apos;s AI key was rejected. An admin needs to check the API key.</p>}
+              </Notice>
+            )}
+
+            {!pending && lastAssistant && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <Button size="sm" variant="secondary" onClick={regenerate}>
+                  ↻ Naye options
                 </Button>
-              )}
-              {error.code === "auth_error" && <p className="mt-1">The server&apos;s AI key was rejected. An admin needs to check ANTHROPIC_API_KEY.</p>}
-            </Notice>
+                <label htmlFor="regen-tone" className="sr-only">
+                  Tone for new options
+                </label>
+                <span className="inline-block w-40">
+                  <Select id="regen-tone" value={regenTone} onChange={(e) => setRegenTone(e.target.value as CaptionContext["tone"])} className="h-8 py-0 text-xs">
+                    {TONES.map((tn) => (
+                      <option key={tn.id} value={tn.id}>
+                        {tn.label}
+                      </option>
+                    ))}
+                  </Select>
+                </span>
+                {applied.length > 0 && <span>Applied: {applied.join(" · ")}</span>}
+              </div>
+            )}
+          </div>
+
+          {!atBottom && (
+            <button
+              type="button"
+              onClick={() => {
+                stickRef.current = true;
+                setAtBottom(true);
+                scrollToBottom();
+              }}
+              aria-label="Scroll to latest message"
+              className="sticky bottom-3 left-full mr-4 ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface shadow-md"
+            >
+              ↓
+            </button>
           )}
-          {applied.length > 0 && !pending && (
-            <p className="text-xs text-muted">Applied from your message: {applied.join(" · ")}</p>
-          )}
-          <div ref={endRef} />
         </div>
 
         {/* Composer */}
-        <div className="sticky bottom-16 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur md:bottom-0">
-          {!isFirstTurn && (
-            <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
-              {QUICK_FOLLOWUPS.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => send(q)}
-                  className="shrink-0 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium hover:border-brand disabled:opacity-50"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              send(draft);
-            }}
-            className="flex items-end gap-2"
-          >
-            <label htmlFor="composer" className="sr-only">
-              Message
-            </label>
-            <Textarea
-              id="composer"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  send(draft);
-                }
-              }}
-              rows={isFirstTurn ? 4 : 2}
-              maxLength={4000}
-              placeholder={isFirstTurn ? t(lang, "studioPlaceholder") : t(lang, "followUpPlaceholder")}
-              className="min-h-0 flex-1 resize-y"
-            />
-            <Button type="submit" disabled={pending || !draft.trim()}>
-              {t(lang, "send")}
-            </Button>
-          </form>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-            <span className="hidden sm:inline">Ctrl/⌘ + Enter to send.</span>
-            {!isFirstTurn && (
-              <span className="flex items-center gap-1">
-                <label htmlFor="regen-tone">Regenerate in tone:</label>
-                <Select id="regen-tone" value={regenTone} onChange={(e) => setRegenTone(e.target.value as CaptionContext["tone"])} className="h-8 w-auto py-0 text-xs">
-                  {TONES.map((tn) => (
-                    <option key={tn.id} value={tn.id}>
-                      {tn.label}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={pending}
-                  onClick={() => {
-                    const ctx = { ...context, tone: regenTone };
-                    setContext(ctx);
-                    send(`Same topic, teen naye options ${regenTone} tone mein do.`, ctx);
-                  }}
-                >
-                  Regenerate
-                </Button>
-              </span>
+        <div className="border-t border-line bg-canvas px-4 pb-3 pt-2">
+          <div className="mx-auto w-full max-w-3xl">
+            {!isEmpty && (
+              <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+                {QUICK_FOLLOWUPS.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => send(q)}
+                    className="shrink-0 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium hover:border-brand disabled:opacity-50"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (pending) stop();
+                else send(draft);
+              }}
+              className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 focus-within:border-brand"
+            >
+              <label htmlFor="composer" className="sr-only">
+                Message
+              </label>
+              <textarea
+                id="composer"
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={onKeyDown}
+                rows={1}
+                maxLength={4000}
+                placeholder={isEmpty ? t(lang, "studioPlaceholder") : t(lang, "followUpPlaceholder")}
+                className="max-h-[220px] min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] text-fg outline-none placeholder:text-muted/70"
+              />
+              {pending ? (
+                <Button type="submit" variant="secondary" aria-label="Stop generating" className="h-10 shrink-0 rounded-xl">
+                  ■ Stop
+                </Button>
+              ) : (
+                <Button type="submit" disabled={!draft.trim()} className="h-10 shrink-0 rounded-xl">
+                  {t(lang, "send")}
+                </Button>
+              )}
+            </form>
+            <p className="mt-1.5 hidden text-center text-[11px] text-muted sm:block">
+              Enter = send · Shift+Enter = new line{pending ? " · Esc = stop" : ""} · AI can make mistakes — check facts before posting.
+            </p>
           </div>
         </div>
       </section>
 
       {/* Context panel: sheet on mobile/tablet, column on large screens */}
       <aside
-        className={cx(
-          "border-l border-line bg-surface lg:block",
-          panelOpen ? "fixed inset-0 z-40 block overflow-y-auto" : "hidden",
-        )}
+        className={cx("min-h-0 overflow-y-auto border-l border-line bg-surface lg:block", panelOpen ? "fixed inset-0 z-40 block" : "hidden")}
         aria-label="Caption settings"
       >
         <div className="flex items-center justify-between px-4 pt-3 lg:hidden">
@@ -295,18 +494,18 @@ export function Studio(props: {
             Done
           </Button>
         </div>
-        <ContextPanel context={context} onChange={setContext} hasConversation={!isFirstTurn} />
+        <ContextPanel context={context} onChange={setContext} hasConversation={!isEmpty} />
       </aside>
     </div>
   );
 }
 
-/** Live status while captions are generated: elapsed time, progress and a preview of option A. */
-function LiveProgress({ live, kind }: { live: { tokens: number; preview: string; startedAt: number } | null; kind: "live" | "local" | "none" }) {
+/** Assistant "typing" state: elapsed time, progress and a live preview of option A when the provider streams. */
+function LiveProgress({ live, kind }: { live: Live | null; kind: "live" | "local" | "none" }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
   const seconds = live ? Math.max(0, Math.round((now - live.startedAt) / 1000)) : 0;
   const label =
@@ -318,20 +517,28 @@ function LiveProgress({ live, kind }: { live: { tokens: number; preview: string;
           : "Local model aapka message padh raha hai…"
         : "Building template preview…";
   return (
-    <div role="status" aria-live="polite" className="max-w-2xl rounded-xl border border-line bg-surface p-4 text-sm">
+    <div role="status" aria-live="polite" className="rounded-2xl border border-line bg-surface p-4 text-sm">
       <div className="flex items-center justify-between gap-2 text-muted">
         <span className="flex items-center gap-2">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-brand" aria-hidden />
+          <span className="flex gap-1" aria-hidden>
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand" />
+          </span>
           {label}
         </span>
-        <span className="tabular-nums">
-          {seconds}s{live?.tokens ? ` · ${live.tokens} words/pieces` : ""}
-        </span>
+        <span className="tabular-nums">{seconds}s</span>
       </div>
-      {live?.preview && (
+      {live?.preview ? (
         <div className="mt-3 rounded-lg bg-surface-2 p-3">
           <p className="text-xs font-semibold text-muted">Option A (writing…)</p>
           <p className="mt-1 whitespace-pre-wrap">{live.preview}</p>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-12 animate-pulse rounded-lg bg-surface-2" />
+          ))}
         </div>
       )}
     </div>

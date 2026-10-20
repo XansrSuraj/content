@@ -10,7 +10,9 @@ export type ProviderErrorCode =
   | "upstream_error"
   | "auth_error"
   | "invalid_output"
-  | "refusal";
+  | "refusal"
+  /** The creator pressed Stop. Nothing is saved. */
+  | "cancelled";
 
 export class ProviderError extends Error {
   constructor(
@@ -60,6 +62,8 @@ export interface CaptionRequest {
   evidenceNotes: string[];
   /** Optional live progress (local streaming provider). Providers may ignore it. */
   onProgress?: (p: { tokens: number; text: string }) => void;
+  /** Aborted when the creator presses Stop / closes the request. Providers may ignore it. */
+  signal?: AbortSignal;
 }
 
 export interface CaptionProvider {

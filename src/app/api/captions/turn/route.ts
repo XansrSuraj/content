@@ -23,9 +23,14 @@ function errorPayload(e: TurnError): { status: number; body: { code: string; mes
   }
 }
 
-async function runTurn(user: SessionUser, body: CaptionTurnInput, onProgress?: (p: { tokens: number; text: string }) => void) {
+async function runTurn(
+  user: SessionUser,
+  body: CaptionTurnInput,
+  onProgress?: (p: { tokens: number; text: string }) => void,
+  signal?: AbortSignal,
+) {
   const db = await getDb();
-  const res = await runCaptionTurn(db, user, body, undefined, { onProgress });
+  const res = await runCaptionTurn(db, user, body, undefined, { onProgress, signal });
   if (!res.ok) return { ok: false as const, ...errorPayload(res.error) };
   const { value } = res;
   const result = toClientMessage(value.assistantMessage).result;
@@ -51,14 +56,21 @@ export const POST = mutation(
   CaptionTurnSchema,
   async (user, body, req) => {
     if (!req.headers.get("accept")?.includes("application/x-ndjson")) {
-      const out = await runTurn(user, body);
+      const out = await runTurn(user, body, undefined, req.signal);
       return out.ok ? json(out.payload) : apiError(out.status, out.body.code, out.body.message, out.body);
     }
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        const send = (obj: unknown) => {
+          // The client may have pressed Stop and closed the stream.
+          try {
+            controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+          } catch {
+            /* stream already closed */
+          }
+        };
         let lastSent = 0;
         try {
           const out = await runTurn(user, body, ({ tokens, text }) => {
@@ -66,7 +78,7 @@ export const POST = mutation(
             if (now - lastSent < 400) return;
             lastSent = now;
             send({ type: "progress", tokens, preview: previewFromPartial(text).slice(0, 600) });
-          });
+          }, req.signal);
           if (out.ok) send({ type: "result", ...out.payload });
           else send({ type: "error", status: out.status, error: out.body });
         } catch (err) {
@@ -74,7 +86,11 @@ export const POST = mutation(
           console.error("[captions/turn] unexpected error:", err instanceof Error ? err.stack ?? err.message : String(err));
           send({ type: "error", status: 500, error: { code: "server_error", message: "Something went wrong on the server. Please retry.", retryable: true } });
         } finally {
-          controller.close();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
         }
       },
     });

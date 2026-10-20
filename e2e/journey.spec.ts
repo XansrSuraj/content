@@ -12,7 +12,7 @@ async function signUp(page: Page, email: string) {
 }
 
 async function sendCaption(page: Page, text: string) {
-  await page.getByLabel("Message").fill(text);
+  await page.getByRole("textbox", { name: "Message" }).fill(text);
   await page.getByRole("button", { name: /Bhejo|Send/ }).click();
   await expect(page.getByText("Option A").first()).toBeVisible({ timeout: 60_000 });
 }
@@ -51,14 +51,18 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   // Caption Studio from the brief
   await page.getByRole("link", { name: "Write caption in Studio" }).click();
   await page.waitForURL(/caption-studio\?brief=/);
-  await expect(page.getByLabel("Message")).not.toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "Message" })).not.toHaveValue("");
   await page.getByRole("button", { name: /Bhejo|Send/ }).click();
   await expect(page.getByText("Option A").first()).toBeVisible({ timeout: 60_000 });
   await page.waitForURL(/c=/);
 
   // Follow-up keeps the conversation
   await page.getByRole("button", { name: "Emoji hata do." }).click();
-  await expect(page.getByText("Option A", { exact: true })).toHaveCount(2, { timeout: 60_000 });
+  // Chat-style history: the earlier reply collapses, the newest reply is shown in full.
+  await expect(page.getByRole("button", { name: "Show all 3 options & details" })).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByText("Option A", { exact: true })).toHaveCount(1);
+  // The creator's follow-up bubble is part of the thread.
+  await expect(page.getByText("Emoji hata do.", { exact: true }).last()).toBeVisible();
 
   // Copy hashtags: success is only shown when the clipboard write succeeds
   await page.getByRole("button", { name: "Copy hashtags" }).first().click();
@@ -214,4 +218,39 @@ test("trending page explains how to enable the free source when it is off", asyn
   await expect(page.getByRole("heading", { name: "Trending now" })).toBeVisible();
   await expect(page.getByText("not Instagram, YouTube or TikTok")).toBeVisible();
   await expect(page.getByText("No trend source is turned on")).toBeVisible();
+});
+
+test("chat composer behaves like a chat app", async ({ page }) => {
+  await page.goto("/signin?mode=signup");
+  await page.getByLabel("Email").fill(`chat${Date.now()}@example.com`);
+  await page.getByLabel("Password").fill("correct-horse-battery");
+  await page.locator("form").getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL(/onboarding/);
+  await page.getByRole("button", { name: /Skip for now/ }).click();
+  await page.waitForURL(/caption-studio/);
+
+  const box = page.getByRole("textbox", { name: "Message" });
+  // Shift+Enter adds a new line, Enter sends.
+  await box.fill("Pehli line");
+  await box.press("Shift+Enter");
+  await box.pressSequentially("doosri line");
+  await expect(box).toHaveValue("Pehli line\ndoosri line");
+  await box.press("Enter");
+  // The creator's message shows immediately, then the reply arrives.
+  await expect(page.getByText("doosri line")).toBeVisible();
+  await expect(page.getByText("Option A", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(box).toHaveValue("");
+  // URL updates without a reload, and the chat appears in the sidebar under "Today".
+  await expect(page).toHaveURL(/c=/);
+  // The view followed the reply down — no "scroll to latest" button needed.
+  await expect(page.getByRole("button", { name: "Scroll to latest message" })).toHaveCount(0);
+  await expect(page.getByText("Today", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Pehli line" })).toBeVisible();
+
+  // Drafts survive switching away and back.
+  await box.fill("adha likha draft");
+  const url = page.url();
+  await page.goto("/app/briefs");
+  await page.goto(url);
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveValue("adha likha draft");
 });
