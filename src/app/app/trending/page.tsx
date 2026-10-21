@@ -28,7 +28,8 @@ export default async function TrendingNowPage() {
   const mastodonOn = sourceStatus("mastodon_trending_tags", cfg).status === "enabled";
   // trendingNow refreshed every stale source, so the charts read here are current.
   const [youtube, podcasts, bluesky, mastodon] = await Promise.all([
-    youtubeOn ? latestBatch(db, "youtube_most_popular_in", 10, { sportsOnly: true }) : [],
+    // Already the Sports-category chart (filtered at ingest), so no title filter here.
+    youtubeOn ? latestBatch(db, "youtube_most_popular_in", 10) : [],
     podcastsOn ? latestBatch(db, "apple_podcasts_top_in", 10, { sportsOnly: true }) : [],
     blueskyOn ? latestBatch(db, "bluesky_trends", 12, { sportsOnly: true }) : [],
     mastodonOn ? latestBatch(db, "mastodon_trending_tags", 12, { sportsOnly: true }) : [],
