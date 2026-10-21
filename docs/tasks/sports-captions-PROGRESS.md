@@ -354,3 +354,14 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
   - The caption used only that date and those teams.
   - Hashtags: #BAYvsARS #BayernMunich #Arsenal #MatchPreview #Football (5 of max 30).
   - Trend note: "No relevant current trend found".
+- **Rate limits found by the final evals** (Groq's own 429 messages, now logged without account ids):
+  - `openai/gpt-oss-20b` free tier: **8,000 tokens/min**, **200,000 tokens/day**, 1,000 requests/day.
+  - One caption ≈ 3.3k tokens, so the daily cap is **≈ 60 captions per day for the whole app** (fewer when repairs run).
+  - Fix shipped (`6cdc358`, live): on a per-minute 429 the provider waits the time Groq names (≤ 20 s) and retries once. Verified in the eval: "Make it shorter." hit TPM, waited and passed.
+  - A daily (TPD) 429 still fails fast with "limit reached".
+- **Final eval (run 7, 13 turns):**
+  - 5 OK: ipl-preview + "shorter" follow-up PASS, ipl-recap-hi, kal-ambiguous.
+  - 8 failed only because the eval itself used up the day's 200K tokens (TPD). No validation failures.
+  - The earlier run 3 (11/13 OK) remains the full-coverage reference; its fact/duplicate issues are fixed in `09a147b` and covered by unit tests.
+  - Reports are in `eval-output/` (gitignored).
+- **Recommended next step:** move to a model with a larger free daily budget, or a paid tier. Gemini works without code changes: `AI_PROVIDER=openai_compatible`, `OPENAI_COMPAT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `OPENAI_COMPAT_MODEL=<flash model>`, `OPENAI_COMPAT_API_KEY`, `OPENAI_COMPAT_HOST_LABEL=Gemini`. Not yet verified (no key).
