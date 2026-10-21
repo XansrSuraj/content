@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOpen, CalendarClock, ExternalLink, FileText, Globe, Mic, PenLine, Search } from "lucide-react";
+import { BookOpen, CalendarClock, ExternalLink, FileText, Globe, Mic, PenLine, Search, SquarePlay } from "lucide-react";
 import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { upcomingMatches } from "@/lib/services/sports-context";
@@ -23,10 +23,12 @@ export default async function TrendingNowPage() {
   const wiki = sourceStatus("wikimedia_top_in", cfg).status === "enabled";
   const [{ items, hidden, otherTopics }, matches, { lang, d }] = await Promise.all([trendingNow(db), upcomingMatches(db, user.id), getServerDict()]);
   const podcastsOn = sourceStatus("apple_podcasts_top_in", cfg).status === "enabled";
+  const youtubeOn = sourceStatus("youtube_most_popular_in", cfg).status === "enabled";
   const blueskyOn = sourceStatus("bluesky_trends", cfg).status === "enabled";
   const mastodonOn = sourceStatus("mastodon_trending_tags", cfg).status === "enabled";
   // trendingNow refreshed every stale source, so the charts read here are current.
-  const [podcasts, bluesky, mastodon] = await Promise.all([
+  const [youtube, podcasts, bluesky, mastodon] = await Promise.all([
+    youtubeOn ? latestBatch(db, "youtube_most_popular_in", 10, { sportsOnly: true }) : [],
     podcastsOn ? latestBatch(db, "apple_podcasts_top_in", 10, { sportsOnly: true }) : [],
     blueskyOn ? latestBatch(db, "bluesky_trends", 12, { sportsOnly: true }) : [],
     mastodonOn ? latestBatch(db, "mastodon_trending_tags", 12, { sportsOnly: true }) : [],
@@ -110,6 +112,18 @@ export default async function TrendingNowPage() {
         </div>
 
         <aside className="mt-10 space-y-8 xl:mt-0">
+          {youtubeOn && (
+            <ChartList
+              id="youtube"
+              icon={<SquarePlay aria-hidden className="h-5 w-5 text-brand" />}
+              title={t.youtubeTitle}
+              lead={t.youtubeLead}
+              items={youtube}
+              empty={t.chartEmpty}
+              openLabel={d.common.open}
+              footer={youtube[0] ? `${t.youtubeSource} · ${formatDateTime(youtube[0].observedAt, lang)}` : null}
+            />
+          )}
           {podcastsOn && (
             <ChartList
               id="podcasts"

@@ -39,11 +39,11 @@ export const SOURCES: SourceInfo[] = [
   },
   {
     key: "youtube_most_popular_in",
-    name: "YouTube Most Popular chart (India)",
+    name: "YouTube Most Popular — Sports (India)",
     platform: "youtube",
     kind: "chart_sample",
     coverage:
-      "Up to 50 videos in the YouTube Data API 'mostPopular' chart for region IN at retrieval time. A chart sample, not all of YouTube, and not specific to Shorts.",
+      "Up to 50 videos in the YouTube Data API 'mostPopular' chart for the Sports category (17), region IN, at retrieval time. A chart sample, not all of YouTube, and not specific to Shorts.",
     requirements: ["YOUTUBE_API_KEY (Google Cloud project with YouTube Data API v3 enabled)", "Accept YouTube API Services Terms"],
     policyNotes: [
       "Stored data is refreshed or deleted within 30 days (enforced via expires_at).",
