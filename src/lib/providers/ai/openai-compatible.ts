@@ -48,6 +48,26 @@ interface Msg {
   content: string;
 }
 
+/** Longest wait for a short rate-limit window before giving up (a caption should not hang). */
+export const MAX_RATE_LIMIT_WAIT_MS = 20_000;
+
+/** Wait from Retry-After (seconds) or the host's "try again in 4.8s / 682.5ms"; null when unknown. */
+export function rateLimitWaitMs(retryAfter: string | null, reason: string): number | null {
+  const header = retryAfter ? Number(retryAfter) : NaN;
+  if (Number.isFinite(header) && header >= 0) return header * 1000;
+  const m = /try again in ((?:\d+m)?)([\d.]+)(ms|s)\b/i.exec(reason);
+  if (!m) return null;
+  const mins = m[1] ? Number(m[1].slice(0, -1)) : 0;
+  return mins * 60_000 + Number(m[2]) * (m[3].toLowerCase() === "ms" ? 1 : 1000);
+}
+
+function abortableSleep(ms: number, cancel?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    cancel?.addEventListener("abort", () => (clearTimeout(t), resolve()), { once: true });
+  });
+}
+
 async function complete(
   s: OpenAICompatSettings,
   fetchImpl: FetchLike,
@@ -55,7 +75,8 @@ async function complete(
   schemaName: string,
   schema: Record<string, unknown>,
   cancel?: AbortSignal,
-) {
+  retried = false,
+): Promise<{ content: string; inputTokens: number; outputTokens: number; model: string; truncated: boolean }> {
   const body: Record<string, unknown> = {
     model: s.model,
     messages,
@@ -85,14 +106,21 @@ async function complete(
     const text = await res.text().catch(() => "");
     if (res.status === 401 || res.status === 403) throw new ProviderError("auth_error", `${s.hostLabel} rejected the server's API key.`, false);
     if (res.status === 429) {
-      // The host's reason (which limit, retry time) — never request content.
+      // The host's reason (which limit, retry time) — never request content or account ids.
       let reason = "";
       try {
         reason = (JSON.parse(text) as { error?: { message?: string } }).error?.message?.slice(0, 240) ?? "";
       } catch {
         /* not JSON */
       }
-      console.warn(`[openai-compatible] rate limited: ${reason || "no reason given"}`);
+      console.warn(`[openai-compatible] rate limited: ${reason.replace(/org_\w+/g, "org_***") || "no reason given"}`);
+      // A per-minute token window frees up within seconds: wait once if the host says it is short.
+      const waitMs = rateLimitWaitMs(res.headers.get("retry-after"), reason);
+      if (!retried && waitMs !== null && waitMs <= MAX_RATE_LIMIT_WAIT_MS) {
+        await abortableSleep(waitMs + 250, cancel);
+        if (cancel?.aborted) throw new ProviderError("cancelled", "Stopped.", false);
+        return complete(s, fetchImpl, messages, schemaName, schema, cancel, true);
+      }
     }
     if (res.status === 429) throw new ProviderError("upstream_rate_limited", `${s.hostLabel} free-tier limit reached. Try again in a minute.`, true);
     if (res.status === 404) throw new ProviderError("upstream_error", `${s.hostLabel} does not offer the model "${s.model}".`, false);

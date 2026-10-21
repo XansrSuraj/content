@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { OpenAICompatCaptionProvider, type OpenAICompatSettings } from "@/lib/providers/ai/openai-compatible";
+import { OpenAICompatCaptionProvider, rateLimitWaitMs, type OpenAICompatSettings } from "@/lib/providers/ai/openai-compatible";
 import { DEFAULT_CONTEXT } from "@/lib/domain/captions";
 import { aiStatus, readConfig } from "@/lib/config";
 import { sampleModelOutput } from "./fixtures";
@@ -118,5 +118,34 @@ describe("AI_PROVIDER=openai_compatible / groq configuration", () => {
       model: "llama3.2:3b",
       host: "localhost",
     });
+  });
+});
+
+describe("short rate-limit windows", () => {
+  const tpm = (wait: string) =>
+    new Response(JSON.stringify({ error: { message: `Rate limit reached ... on tokens per minute (TPM): Limit 8000, Used 6569, Requested 3324. Please try again in ${wait}. Need more tokens?` } }), { status: 429 });
+
+  it("reads the wait from Retry-After or the host's message", () => {
+    expect(rateLimitWaitMs("3", "")).toBe(3000);
+    expect(rateLimitWaitMs(null, "Please try again in 682.5ms.")).toBe(682.5);
+    expect(rateLimitWaitMs(null, "Please try again in 14.1975s.")).toBeCloseTo(14197.5);
+    expect(rateLimitWaitMs(null, "Please try again in 1m3.5s.")).toBe(63500);
+    expect(rateLimitWaitMs(null, "slow down")).toBeNull();
+  });
+
+  it("waits once for a short window, then succeeds", async () => {
+    const f = vi.fn<Fetch>().mockResolvedValueOnce(tpm("10ms")).mockResolvedValueOnce(completion(JSON.stringify(sampleModelOutput())));
+    const out = await new OpenAICompatCaptionProvider(settings, f).generate(req);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(out.data.variants).toHaveLength(3);
+  });
+
+  it("does not wait for a long window or retry twice", async () => {
+    const long = vi.fn<Fetch>(async () => tpm("1m30s"));
+    await expect(new OpenAICompatCaptionProvider(settings, long).generate(req)).rejects.toMatchObject({ code: "upstream_rate_limited" });
+    expect(long).toHaveBeenCalledTimes(1);
+    const again = vi.fn<Fetch>(async () => tpm("10ms"));
+    await expect(new OpenAICompatCaptionProvider(settings, again).generate(req)).rejects.toMatchObject({ code: "upstream_rate_limited" });
+    expect(again).toHaveBeenCalledTimes(2);
   });
 });
