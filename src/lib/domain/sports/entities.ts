@@ -44,6 +44,42 @@ function canonical(s: string): string {
     .join(" ");
 }
 
+/** Club words shared by many teams ("Leeds United", "Newcastle United") — never a match on their own. */
+const GENERIC_CLUB_WORDS = new Set([
+  "united", "city", "real", "athletic", "atletico", "sporting", "racing", "inter", "olympique", "borussia", "dynamo",
+  "rapid", "union", "stade", "sport", "town", "county", "rovers", "wanderers", "saint", "young", "boys", "women",
+]);
+
+/** OpenLigaDB uses German city names ("Inter Mailand"); map them to the names other providers use. */
+const CITY_EXONYMS: Record<string, string> = {
+  mailand: "milano", milan: "milano", munchen: "munich", rom: "roma", turin: "torino", neapel: "napoli", lissabon: "lisboa",
+  prag: "praha", kopenhagen: "kobenhavn", belgrad: "beograd", moskau: "moscow", warschau: "warszawa", florenz: "fiorentina",
+};
+
+function nameTokens(s: string): string[] {
+  return canonical(s)
+    .split(" ")
+    .map((w) => CITY_EXONYMS[w] ?? w)
+    .filter((w) => w.length >= 4 && !/^\d+$/.test(w) && !GENERIC_CLUB_WORDS.has(w));
+}
+
+/**
+ * Whether two providers' names mean the same team ("Galatasaray Istanbul" / "Galatasaray SK",
+ * "Club Brugge KV" / "FC Brügge"): same name without affixes, or a shared distinctive word.
+ * Only used to merge fixtures that already share sport, category and kick-off time.
+ */
+export function sameTeamName(a: string, b: string): boolean {
+  const ca = canonical(a);
+  if (ca && ca === canonical(b)) return true;
+  const tb = nameTokens(b);
+  return nameTokens(a).some((x) => tb.includes(x));
+}
+
+/** Both sides are the same teams, in either order. */
+export function sameFixtureNames(home1: string, away1: string, home2: string, away2: string): boolean {
+  return (sameTeamName(home1, home2) && sameTeamName(away1, away2)) || (sameTeamName(home1, away2) && sameTeamName(away1, home2));
+}
+
 /**
  * Finds a team id for a provider's team name (e.g. "FC Arsenal" → football:arsenal).
  * Exact canonical match only — provider names are never fuzzy-guessed. Women's teams

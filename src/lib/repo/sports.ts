@@ -2,7 +2,7 @@ import { and, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
 import { platformReferences, sportsMatches } from "@/lib/db/schema";
 import type { MatchRecord, MatchStatus, StatusSource } from "@/lib/domain/sports/resolve";
-import type { Sport } from "@/lib/domain/sports/entities";
+import { sameFixtureNames, type Sport } from "@/lib/domain/sports/entities";
 
 type MatchRow = typeof sportsMatches.$inferSelect;
 
@@ -52,11 +52,12 @@ export interface MatchUpsert {
 
 const AUTHORITY: Record<string, number> = { creator: 0, schedule_only: 1, provider: 2 };
 const SAME_MATCH_WINDOW_MS = 6 * 3_600_000;
+const SAME_MATCH_BY_NAME_WINDOW_MS = 3 * 3_600_000;
 
 /**
  * Shared provider fixtures, merged into one canonical row per real match: the same
- * fixture from two providers (same sport, category, both teams, start within 6 h)
- * is one row with both provider ids. A lower-authority source (schedule-only
+ * fixture from two providers (same sport, category, both teams, start within 6 h — or,
+ * for teams outside the seed, matching names within 3 h) is one row with both provider ids. A lower-authority source (schedule-only
  * community data) never overrides the status of a live-status provider.
  */
 export async function upsertMatches(db: DB, rows: MatchUpsert[]): Promise<number> {
@@ -126,10 +127,29 @@ async function findCanonical(db: DB, r: Omit<MatchUpsert, "verified">): Promise<
     .from(sportsMatches)
     .where(and(isNull(sportsMatches.ownerId), sql`${sportsMatches.providerIds} ->> ${r.provider} = ${r.externalId}`));
   if (byId) return byId;
-  if (!r.homeTeamId || !r.awayTeamId) return null;
-  const from = new Date(r.startsAt.getTime() - SAME_MATCH_WINDOW_MS);
-  const to = new Date(r.startsAt.getTime() + SAME_MATCH_WINDOW_MS);
-  const [same] = await db
+  if (r.homeTeamId && r.awayTeamId) {
+    const from = new Date(r.startsAt.getTime() - SAME_MATCH_WINDOW_MS);
+    const to = new Date(r.startsAt.getTime() + SAME_MATCH_WINDOW_MS);
+    const [same] = await db
+      .select()
+      .from(sportsMatches)
+      .where(
+        and(
+          isNull(sportsMatches.ownerId),
+          eq(sportsMatches.sport, r.sport),
+          eq(sportsMatches.gender, r.gender),
+          gte(sportsMatches.startsAt, from),
+          lte(sportsMatches.startsAt, to),
+          or(
+            and(eq(sportsMatches.homeTeamId, r.homeTeamId), eq(sportsMatches.awayTeamId, r.awayTeamId)),
+            and(eq(sportsMatches.homeTeamId, r.awayTeamId), eq(sportsMatches.awayTeamId, r.homeTeamId)),
+          ),
+        ),
+      );
+    if (same) return same;
+  }
+  // Teams outside the seed (or named differently by each provider): match by name, tighter time window.
+  const candidates = await db
     .select()
     .from(sportsMatches)
     .where(
@@ -137,15 +157,31 @@ async function findCanonical(db: DB, r: Omit<MatchUpsert, "verified">): Promise<
         isNull(sportsMatches.ownerId),
         eq(sportsMatches.sport, r.sport),
         eq(sportsMatches.gender, r.gender),
-        gte(sportsMatches.startsAt, from),
-        lte(sportsMatches.startsAt, to),
-        or(
-          and(eq(sportsMatches.homeTeamId, r.homeTeamId), eq(sportsMatches.awayTeamId, r.awayTeamId)),
-          and(eq(sportsMatches.homeTeamId, r.awayTeamId), eq(sportsMatches.awayTeamId, r.homeTeamId)),
-        ),
+        gte(sportsMatches.startsAt, new Date(r.startsAt.getTime() - SAME_MATCH_BY_NAME_WINDOW_MS)),
+        lte(sportsMatches.startsAt, new Date(r.startsAt.getTime() + SAME_MATCH_BY_NAME_WINDOW_MS)),
       ),
     );
-  return same ?? null;
+  return candidates.find((c) => sameFixtureNames(r.homeName, r.awayName, c.homeName, c.awayName)) ?? null;
+}
+
+/**
+ * One record per real fixture for display and match resolution. Rows stored before two
+ * providers were merged can still be duplicates; the most authoritative one is kept.
+ */
+export function dedupeFixtures(list: MatchRecord[]): MatchRecord[] {
+  const kept: MatchRecord[] = [];
+  const rank = (m: MatchRecord) => AUTHORITY[m.statusSource] * 1e13 + m.statusCheckedAt.getTime();
+  for (const m of [...list].sort((a, b) => rank(b) - rank(a))) {
+    const dup = kept.some(
+      (k) =>
+        k.sport === m.sport &&
+        k.gender === m.gender &&
+        Math.abs(k.startsAt.getTime() - m.startsAt.getTime()) <= SAME_MATCH_BY_NAME_WINDOW_MS &&
+        ((k.homeTeamId && k.homeTeamId === m.homeTeamId && k.awayTeamId === m.awayTeamId) || sameFixtureNames(k.homeName, k.awayName, m.homeName, m.awayName)),
+    );
+    if (!dup) kept.push(m);
+  }
+  return kept.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 }
 
 /** Fixtures a creator can see: shared provider fixtures plus their own entries. */
@@ -163,7 +199,7 @@ export async function listMatchesFor(db: DB, userId: string, opts: { sport: Spor
     )
     .orderBy(sportsMatches.startsAt)
     .limit(500);
-  return rows.map(toMatchRecord);
+  return dedupeFixtures(rows.map(toMatchRecord));
 }
 
 export async function getMatch(db: DB, userId: string, id: string): Promise<MatchRecord | null> {
