@@ -386,3 +386,8 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
   - Gemini dropped a player the creator named (Kane), saying he was "not in evidence". The prompt should say the creator's own names are allowed.
   - Gemini free-tier limits are not shown in response headers; check them in AI Studio.
   - Free-tier content may be used by Google to improve its products (per Google's terms); the owner should review this.
+
+## Provider status update (2026-10-21, afternoon)
+- **football-data.org: VERIFIED LIVE.** The token is on Render. A forced ingest stored 121 matches, and the production Trending cards show "Source: football-data.org" with the status-check time. The date window was fixed to yesterday + 9 days.
+- **CricAPI: key invalid.** The API answered "Invalid API Key" to one test call. The key was not set on Render; the owner needs to re-copy it from the cricketdata.org member area.
+- **YouTube Data API: VERIFIED LIVE.** It serves the Sports-category chart; see PROGRESS.md.

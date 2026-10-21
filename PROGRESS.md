@@ -215,6 +215,14 @@ Keep this file current so work can resume across sessions.
 - **Safety filter:** sports terms are no longer hidden as violent events ("Kerala Blasters", "death overs", "dead rubber", "attacking", "shooting drills"). Real event words are still hidden.
 - **Tests:** 260 unit; E2E 12 passed, 1 skipped. One full E2E run timed out on a slow hotspot connection; the timed-out tests passed on rerun.
 
+- **football-data.org (2026-10-21): VERIFIED LIVE.**
+  - `FOOTBALL_DATA_TOKEN` is set on Render; the forced ingest stored 121 matches.
+  - Fixed: the free tier's 10-day window was being spent on the past 10 days. It now covers yesterday plus the next 9 days.
+  - Fixtures from different providers now merge by team name when teams are outside the seed (distinctive words, German city names mapped, generic words like "United" ignored, 3 h window).
+  - Older duplicate rows are collapsed at read time (`dedupeFixtures`).
+  - When a live-status provider takes over a row, it also becomes the row's source and supplies the names. Cards now read e.g. "FC Internazionale Milano vs FK Shakhtar Donetsk · Source: football-data.org".
+- **CricAPI: NOT SET.** cricketdata.org rejected the key in `.env.deploy` ("Invalid API Key"); it is not in the usual UUID format. It was left off Render until the owner re-copies it.
+
 ## Next steps
 - Optional free keys for live status: `CRICAPI_KEY` (cricketdata.org) and `FOOTBALL_DATA_TOKEN` (football-data.org).
 - Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.
