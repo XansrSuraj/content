@@ -300,9 +300,11 @@ export class FootballDataProvider implements MatchProvider {
 
   async listFixtures(range: { from: Date; to: Date }, signal: AbortSignal, now: Date): Promise<MatchUpsert[]> {
     const day = (d: Date) => d.toISOString().slice(0, 10);
-    // The free tier allows at most 10 days per request.
-    const to = new Date(Math.min(range.to.getTime(), range.from.getTime() + 9 * 86_400_000));
-    const json = await getJson(`https://api.football-data.org/v4/matches?dateFrom=${day(range.from)}&dateTo=${day(to)}`, { signal, headers: { "X-Auth-Token": this.token, Accept: "application/json" } });
+    // The free tier allows at most 10 days per request: spend them on yesterday (late results)
+    // and the next days (live status for what creators post about), not on older history.
+    const from = new Date(Math.max(range.from.getTime(), now.getTime() - 86_400_000));
+    const to = new Date(Math.min(range.to.getTime(), from.getTime() + 9 * 86_400_000));
+    const json = await getJson(`https://api.football-data.org/v4/matches?dateFrom=${day(from)}&dateTo=${day(to)}`, { signal, headers: { "X-Auth-Token": this.token, Accept: "application/json" } });
     if (json === null) return [];
     const parsed = FootballDataSchema.safeParse(json);
     if (!parsed.success) throw new SourceFetchError("Unexpected football-data.org shape", false);

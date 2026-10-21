@@ -70,11 +70,26 @@ export async function upsertMatches(db: DB, rows: MatchUpsert[]): Promise<number
       const providerIds = { ...existing.providerIds, [r.provider]: r.externalId };
       // Status follows whoever has the most authority, whichever provider created the row.
       const wins = AUTHORITY[r.statusSource] >= AUTHORITY[existing.statusSource];
+      // The row is shown as coming from whoever owns its status, so a stronger source takes it over.
+      const takesOver = AUTHORITY[r.statusSource] > AUTHORITY[existing.statusSource];
       await db
         .update(sportsMatches)
         .set(
           wins
             ? {
+                ...(takesOver
+                  ? {
+                      provider: r.provider,
+                      externalId: r.externalId,
+                      url: r.url ?? existing.url,
+                      // Its names too (football-data.org's English names over OpenLigaDB's German ones).
+                      homeName: r.homeName,
+                      awayName: r.awayName,
+                      competition: r.competition,
+                      homeTeamId: existing.homeTeamId ?? r.homeTeamId,
+                      awayTeamId: existing.awayTeamId ?? r.awayTeamId,
+                    }
+                  : {}),
                 status: r.status,
                 statusSource: r.statusSource,
                 statusCheckedAt: r.statusCheckedAt,

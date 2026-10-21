@@ -57,6 +57,15 @@ describe("HTTP semantics", () => {
     await expect(getJson("https://x.test", { signal: AbortSignal.timeout(1000) })).rejects.toMatchObject({ retryable: true });
   });
 
+  it("football-data spends its 10-day window on yesterday and the coming days", async () => {
+    const fn = stub(() => json({ matches: [] }));
+    const at = new Date("2026-10-21T06:00:00Z");
+    // The ingest job asks for 10 days back to 14 days ahead.
+    await new FootballDataProvider("t").listFixtures({ from: new Date("2026-10-11T06:00:00Z"), to: new Date("2026-11-04T06:00:00Z") }, AbortSignal.timeout(1000), at);
+    const url = new URL(String(fn.mock.calls[0][0]));
+    expect([url.searchParams.get("dateFrom"), url.searchParams.get("dateTo")]).toEqual(["2026-10-20", "2026-10-29"]);
+  });
+
   it("football-data getMatch maps one match", async () => {
     stub(() => json({ id: 9, utcDate: "2026-10-20T19:00:00Z", status: "IN_PLAY", competition: { name: "Premier League", code: "PL" }, homeTeam: { name: "Arsenal FC" }, awayTeam: { name: "Chelsea FC" } }));
     const m = await new FootballDataProvider("t").getMatch("9", AbortSignal.timeout(1000), now);

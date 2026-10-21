@@ -47,6 +47,11 @@ describe("merging fixtures of teams outside the seed", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].providerIds).toEqual({ openligadb: "ol-1", football_data: "fd-1" });
     expect(rows[0].statusSource).toBe("provider");
+    // Shown as football-data.org's match, and later community refreshes still find the same row.
+    expect(rows[0].provider).toBe("football_data");
+    expect(rows[0].homeName).toBe("FC Internazionale Milano");
+    await upsertMatches(db, [row({})]);
+    expect(await db.select().from(sportsMatches)).toHaveLength(1);
     expect(await listMatchesFor(db, u.id, { sport: "football", from: new Date("2026-10-20T00:00:00Z"), to: new Date("2026-10-23T00:00:00Z") })).toHaveLength(1);
   });
 
