@@ -208,6 +208,13 @@ Keep this file current so work can resume across sessions.
   - Database tables are untouched (migrations stay additive).
 - **Tests:** 250 unit (new `sports-topic.test.ts`, `sports-only.test.ts`); E2E 12 passed, 1 skipped.
 
+- **YouTube (2026-10-21):**
+  - `YOUTUBE_API_KEY` is set on Render. The connector asks for the Sports category (17) chart in India and keeps Sports-category or sports-titled videos at their real chart position.
+  - The chart is shown on Trending as "Top sports videos on YouTube (India)", with YouTube attribution.
+  - VERIFIED LIVE: 39 of 50 videos kept (ISL, LaLiga, UCL, cricket), and the source is fresh in `/api/health`.
+- **Safety filter:** sports terms are no longer hidden as violent events ("Kerala Blasters", "death overs", "dead rubber", "attacking", "shooting drills"). Real event words are still hidden.
+- **Tests:** 260 unit; E2E 12 passed, 1 skipped. One full E2E run timed out on a slow hotspot connection; the timed-out tests passed on rerun.
+
 ## Next steps
 - Optional free keys for live status: `CRICAPI_KEY` (cricketdata.org) and `FOOTBALL_DATA_TOKEN` (football-data.org).
 - Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.
