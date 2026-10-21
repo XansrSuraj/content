@@ -84,6 +84,16 @@ async function complete(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     if (res.status === 401 || res.status === 403) throw new ProviderError("auth_error", `${s.hostLabel} rejected the server's API key.`, false);
+    if (res.status === 429) {
+      // The host's reason (which limit, retry time) — never request content.
+      let reason = "";
+      try {
+        reason = (JSON.parse(text) as { error?: { message?: string } }).error?.message?.slice(0, 240) ?? "";
+      } catch {
+        /* not JSON */
+      }
+      console.warn(`[openai-compatible] rate limited: ${reason || "no reason given"}`);
+    }
     if (res.status === 429) throw new ProviderError("upstream_rate_limited", `${s.hostLabel} free-tier limit reached. Try again in a minute.`, true);
     if (res.status === 404) throw new ProviderError("upstream_error", `${s.hostLabel} does not offer the model "${s.model}".`, false);
     // Some hosts reject a reply that broke the schema with a 400 — that is worth one repair.
