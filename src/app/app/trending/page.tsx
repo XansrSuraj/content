@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
-import { BookOpen, ExternalLink, FileText, Globe, Mic, Music, PenLine, Search } from "lucide-react";
+import { BookOpen, CalendarClock, ExternalLink, FileText, Globe, Mic, PenLine, Search } from "lucide-react";
 import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
+import { upcomingMatches } from "@/lib/services/sports-context";
+import { MatchCards } from "@/components/match-cards";
 import { config } from "@/lib/config";
 import { sourceStatus } from "@/lib/providers/trends/catalog";
-import { latestBatch, topSongs, trendingNow, type BatchItem } from "@/lib/services/trend-context";
+import { latestBatch, trendingNow, type BatchItem } from "@/lib/services/trend-context";
 import { getServerDict } from "@/lib/i18n/server";
 import { Badge, Card, EmptyState, LinkButton, Notice, PageHeader, formatDateTime } from "@/components/ui";
 
@@ -14,22 +16,20 @@ export async function generateMetadata() {
 }
 
 export default async function TrendingNowPage() {
-  await requireUser();
+  const user = await requireUser();
   const db = await getDb();
   const cfg = config();
   const google = sourceStatus("google_trends_rss_in", cfg).status === "enabled";
   const wiki = sourceStatus("wikimedia_top_in", cfg).status === "enabled";
-  const music = sourceStatus("apple_music_top_in", cfg).status === "enabled";
-  const [{ items, hidden }, { lang, d }] = await Promise.all([trendingNow(db), getServerDict()]);
+  const [{ items, hidden, otherTopics }, matches, { lang, d }] = await Promise.all([trendingNow(db), upcomingMatches(db, user.id), getServerDict()]);
   const podcastsOn = sourceStatus("apple_podcasts_top_in", cfg).status === "enabled";
   const blueskyOn = sourceStatus("bluesky_trends", cfg).status === "enabled";
   const mastodonOn = sourceStatus("mastodon_trending_tags", cfg).status === "enabled";
   // trendingNow refreshed every stale source, so the charts read here are current.
-  const [songs, podcasts, bluesky, mastodon] = await Promise.all([
-    music ? topSongs(db, 10) : [],
-    podcastsOn ? latestBatch(db, "apple_podcasts_top_in", 10) : [],
-    blueskyOn ? latestBatch(db, "bluesky_trends", 12) : [],
-    mastodonOn ? latestBatch(db, "mastodon_trending_tags", 12) : [],
+  const [podcasts, bluesky, mastodon] = await Promise.all([
+    podcastsOn ? latestBatch(db, "apple_podcasts_top_in", 10, { sportsOnly: true }) : [],
+    blueskyOn ? latestBatch(db, "bluesky_trends", 12, { sportsOnly: true }) : [],
+    mastodonOn ? latestBatch(db, "mastodon_trending_tags", 12, { sportsOnly: true }) : [],
   ]);
   const t = d.trending;
   const latest = items.reduce<Date | null>((acc, i) => (!acc || i.retrievedAt > acc ? i.retrievedAt : acc), null);
@@ -42,6 +42,17 @@ export default async function TrendingNowPage() {
         {t.what(wiki)}
         {latest ? t.refreshed(formatDateTime(latest, lang)) : ""}
       </Notice>
+
+      <section className="mb-10" aria-labelledby="matches-title">
+        <h2 id="matches-title" className="flex items-center gap-2 text-lg font-semibold">
+          <CalendarClock aria-hidden className="h-5 w-5 text-brand" />
+          {t.matchesTitle}
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted">{t.matchesLead}</p>
+        <div className="mt-4">
+          {matches.length ? <MatchCards matches={matches} captionLabel={t.matchCaption} /> : <p className="text-sm text-muted">{t.matchesEmpty}</p>}
+        </div>
+      </section>
 
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6">
         <div className="min-w-0">
@@ -94,22 +105,11 @@ export default async function TrendingNowPage() {
             </div>
           )}
 
-          {hidden > 0 && <p className="mt-5 text-xs text-muted">{t.hidden(hidden)}</p>}
+          {otherTopics > 0 && <p className="mt-5 text-xs text-muted">{t.sportsOnly(otherTopics)}</p>}
+          {hidden > 0 && <p className="mt-2 text-xs text-muted">{t.hidden(hidden)}</p>}
         </div>
 
         <aside className="mt-10 space-y-8 xl:mt-0">
-          {music && (
-            <ChartList
-              id="songs"
-              icon={<Music aria-hidden className="h-5 w-5 text-brand" />}
-              title={t.musicTitle}
-              lead={t.musicLead}
-              items={songs}
-              empty={t.musicEmpty}
-              openLabel={t.musicOpen}
-              footer={songs[0] ? `${t.musicSource} · ${formatDateTime(songs[0].observedAt, lang)}` : null}
-            />
-          )}
           {podcastsOn && (
             <ChartList
               id="podcasts"
@@ -117,7 +117,7 @@ export default async function TrendingNowPage() {
               title={t.podcastsTitle}
               lead={t.podcastsLead}
               items={podcasts}
-              empty={t.musicEmpty}
+              empty={t.chartEmpty}
               openLabel={d.common.open}
               footer={podcasts[0] ? `${t.podcastsSource} · ${formatDateTime(podcasts[0].observedAt, lang)}` : null}
             />

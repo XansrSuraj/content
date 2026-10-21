@@ -6,6 +6,8 @@ import { getProfile } from "@/lib/repo/creator";
 import { listConversations } from "@/lib/repo/studio";
 import { listBriefs } from "@/lib/repo/work";
 import { getFeed } from "@/lib/services/discovery";
+import { upcomingMatches } from "@/lib/services/sports-context";
+import { MatchCards } from "@/components/match-cards";
 import { getServerDict } from "@/lib/i18n/server";
 import { Card, EmptyState, LinkButton, formatDate } from "@/components/ui";
 import { OpportunityCard } from "@/components/opportunity-card";
@@ -24,11 +26,12 @@ const QUICK = [
 export default async function AppHome() {
   const user = await requireUser();
   const db = await getDb();
-  const [profile, convs, briefs, feed, { lang, d }] = await Promise.all([
+  const [profile, convs, briefs, feed, matches, { lang, d }] = await Promise.all([
     getProfile(db, user.id),
     listConversations(db, user.id),
     listBriefs(db, user.id),
     getFeed(db, user, {}),
+    upcomingMatches(db, user.id, { limit: 3 }),
     getServerDict(),
   ]);
   const h = d.home;
@@ -63,21 +66,34 @@ export default async function AppHome() {
 
       <section>
         <div className="mb-3 flex items-end justify-between">
-          <h2 className="text-lg font-semibold">{h.ideasForYou}</h2>
-          <Link href="/app/opportunities" className="text-sm font-semibold text-brand hover:underline">
+          <h2 className="text-lg font-semibold">{d.trending.matchesTitle}</h2>
+          <Link href="/app/trending" className="text-sm font-semibold text-brand hover:underline">
             {h.seeAll} →
           </Link>
         </div>
-        {feed.feed.length ? (
+        {matches.length ? (
+          <MatchCards matches={matches} captionLabel={d.trending.matchCaption} />
+        ) : (
+          <EmptyState title={d.trending.matchesTitle}>{d.trending.matchesEmpty}</EmptyState>
+        )}
+      </section>
+
+      {/* Ideas only appear once there are sports ideas to show. */}
+      {feed.feed.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-end justify-between">
+            <h2 className="text-lg font-semibold">{h.ideasForYou}</h2>
+            <Link href="/app/opportunities" className="text-sm font-semibold text-brand hover:underline">
+              {h.seeAll} →
+            </Link>
+          </div>
           <div className="grid gap-4 md:grid-cols-3">
             {feed.feed.slice(0, 3).map((item) => (
               <OpportunityCard key={item.opportunity.id} item={item} d={d} lang={lang} />
             ))}
           </div>
-        ) : (
-          <EmptyState title={h.noIdeasTitle}>{h.noIdeasText}</EmptyState>
-        )}
-      </section>
+        </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="p-5">

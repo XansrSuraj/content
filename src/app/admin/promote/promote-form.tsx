@@ -43,7 +43,7 @@ export function PromoteForm({ observationId, title }: { observationId: string | 
             </Select>
           </Field>
         </div>
-        <fieldset><legend className="text-sm font-semibold">Categories</legend><Checks name="categories" items={CATEGORIES.map((c) => ({ id: c.id, label: c.hinglish }))} /></fieldset>
+        <fieldset><legend className="text-sm font-semibold">Categories</legend><Checks name="categories" items={CATEGORIES.filter((c) => c.available).map((c) => ({ id: c.id, label: c.hinglish }))} /></fieldset>
         <fieldset><legend className="text-sm font-semibold">Languages</legend><Checks name="languages" items={[...LANGUAGES]} defaults={["hinglish"]} /></fieldset>
         <fieldset><legend className="text-sm font-semibold">Regions</legend><Checks name="regions" items={[...REGIONS]} defaults={["IN"]} /></fieldset>
         <fieldset><legend className="text-sm font-semibold">Suits destinations</legend><Checks name="platforms" items={PLATFORMS.map((p) => ({ id: p.id, label: p.label }))} defaults={["instagram_reels", "youtube_shorts"]} /></fieldset>

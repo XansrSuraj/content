@@ -76,7 +76,7 @@ export const CRICKET_TEAMS: TeamSeed[] = [
 export const CRICKET_PLAYERS: PlayerSeed[] = [
   { id: "kohli", sport: "cricket", name: "Virat Kohli", category: "men", aliases: ["virat kohli", "kohli", "king kohli", "virat bhai", "chiku", "विराट कोहली", "कोहली", "~virat", "~विराट"] },
   { id: "rohit", sport: "cricket", name: "Rohit Sharma", category: "men", aliases: ["rohit sharma", "hitman", "ro hit", "रोहित शर्मा", "~rohit", "~रोहित"] },
-  { id: "dhoni", sport: "cricket", name: "MS Dhoni", category: "men", aliases: ["ms dhoni", "dhoni", "thala", "captain cool", "धोनी", "माही", "~mahi"] },
+  { id: "dhoni", sport: "cricket", name: "MS Dhoni", category: "men", aliases: ["ms dhoni", "dhoni", "thala", "captain cool", "धोनी", "~माही", "~mahi"] },
   { id: "bumrah", sport: "cricket", name: "Jasprit Bumrah", category: "men", aliases: ["jasprit bumrah", "bumrah", "boom boom bumrah", "बुमराह"] },
   { id: "gill", sport: "cricket", name: "Shubman Gill", category: "men", aliases: ["shubman gill", "shubman", "शुभमन गिल", "~gill"] },
   { id: "hardik", sport: "cricket", name: "Hardik Pandya", category: "men", aliases: ["hardik pandya", "हार्दिक पांड्या", "~hardik"] },

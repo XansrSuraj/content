@@ -24,7 +24,8 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   await page.getByRole("button", { name: "Try the demo" }).first().click();
   await page.waitForURL(/onboarding/);
   await expect(page.getByText("Demo account", { exact: true })).toBeVisible();
-  await page.getByText("Tech & gadgets").click();
+  // Sports is the only niche; the rest are shown as coming soon.
+  await expect(page.getByText("Coming soon").first()).toBeVisible();
   await page.getByRole("button", { name: "Save & see ideas" }).click();
   await page.waitForURL(/\/app$/);
   await expect(page.getByText("Demo mode", { exact: true }).first()).toBeVisible();
@@ -33,7 +34,7 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   await page.goto("/app/opportunities");
   await expect(page.getByText("Demo sample data").first()).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/desktop-opportunities.png`, fullPage: true });
-  await page.getByRole("link", { name: "Budget phone se cinematic shots" }).click();
+  await page.getByRole("link", { name: "60-second match-day preview" }).click();
   await expect(page.getByRole("heading", { name: "Evidence" })).toBeVisible();
   await expect(page.getByText("Demo sample — not real data")).toBeVisible();
   await expect(page.getByText(/Comparable observations only/)).toBeVisible();
@@ -82,7 +83,7 @@ test("demo creator completes the primary journey", async ({ page, context }) => 
   // Saved
   await page.goto("/app/saved");
   await expect(page.getByText("Mera edited caption.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Budget phone se cinematic shots (demo)" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "60-second match-day preview (demo)" })).toBeVisible();
 
   // Published link + manual feedback
   await page.goto("/app/published");
@@ -124,7 +125,7 @@ test("real creator opens Caption Studio directly and sees honest unconfigured st
   await page.goto("/app/opportunities?dataset=observed");
   // Either no source is configured, or one is but has no observed ideas for a new niche yet.
   await expect(page.getByText(/Trend provider unavailable|No ideas found/).first()).toBeVisible();
-  await expect(page.getByText("Budget phone se cinematic shots")).toHaveCount(0);
+  await expect(page.getByText("60-second match-day preview")).toHaveCount(0);
 
   // Not an admin
   await page.goto("/admin");

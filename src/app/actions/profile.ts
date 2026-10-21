@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db/client";
 import { destroyAllSessions, requireUser } from "@/lib/auth/session";
-import { CATEGORY_IDS, LANGUAGE_IDS, REGION_IDS, TONE_IDS } from "@/lib/domain/options";
+import { AVAILABLE_CATEGORY_IDS, CATEGORY_IDS, LANGUAGE_IDS, REGION_IDS, TONE_IDS } from "@/lib/domain/options";
 import { PLATFORM_IDS } from "@/lib/domain/platforms";
 import { deleteAccount, deleteHistory, setConsent, upsertProfile } from "@/lib/repo/creator";
 import { cookies } from "next/headers";
@@ -23,7 +23,12 @@ async function syncLangCookie(lang: string) {
 
 const ProfileForm = z.object({
   displayName: z.string().trim().max(80).default(""),
-  categories: z.array(z.enum(CATEGORY_IDS as [string, ...string[]])).max(6).default([]),
+  // Sports-only for now: whatever is posted, the profile keeps the available niches.
+  categories: z
+    .array(z.enum(CATEGORY_IDS as [string, ...string[]]))
+    .max(6)
+    .default([])
+    .transform(() => [...AVAILABLE_CATEGORY_IDS]),
   platforms: z.array(z.enum(PLATFORM_IDS)).max(7).default([]),
   contentLanguages: z.array(z.enum(LANGUAGE_IDS)).min(1).max(3).default(["hinglish"]),
   region: z.enum(REGION_IDS).default("IN"),

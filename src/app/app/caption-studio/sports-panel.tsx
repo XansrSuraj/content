@@ -134,7 +134,7 @@ export const SportsPanel = forwardRef<
   );
 });
 
-function MatchLine({ m }: { m: MatchSnapshot }) {
+export function MatchLine({ m }: { m: MatchSnapshot }) {
   const { d, lang } = useI18n();
   const t = d.sports;
   return (

@@ -1,31 +1,32 @@
 /**
  * Configurable creator categories and caption options.
- * `focus: true` marks the niches that have hand-built demo content and tuned
- * prompts today. Others are selectable but described as early support.
+ * The product is sports-only for now: `available: false` niches are shown as "coming soon".
  */
 
 export interface Category {
   id: string;
   label: string;
   hinglish: string;
-  focus: boolean;
+  available: boolean;
 }
 
 export const CATEGORIES: Category[] = [
-  { id: "tech", label: "Technology", hinglish: "Tech & gadgets", focus: true },
-  { id: "education", label: "Education", hinglish: "Padhai & explainers", focus: true },
-  { id: "comedy", label: "Comedy", hinglish: "Comedy & skits", focus: true },
-  { id: "food", label: "Food", hinglish: "Food & recipes", focus: true },
-  { id: "gaming", label: "Gaming", hinglish: "Gaming", focus: false },
-  { id: "sports", label: "Sports", hinglish: "Sports & cricket", focus: false },
-  { id: "art", label: "Art", hinglish: "Art & craft", focus: false },
-  { id: "beauty", label: "Beauty", hinglish: "Beauty & skincare", focus: false },
-  { id: "music", label: "Music", hinglish: "Music", focus: false },
-  { id: "lifestyle", label: "Lifestyle", hinglish: "Lifestyle & vlogs", focus: false },
-  { id: "family", label: "Family-friendly", hinglish: "Family-friendly", focus: false },
+  { id: "sports", label: "Sports", hinglish: "Sports (cricket & football)", available: true },
+  { id: "tech", label: "Technology", hinglish: "Tech & gadgets", available: false },
+  { id: "education", label: "Education", hinglish: "Padhai & explainers", available: false },
+  { id: "comedy", label: "Comedy", hinglish: "Comedy & skits", available: false },
+  { id: "food", label: "Food", hinglish: "Food & recipes", available: false },
+  { id: "gaming", label: "Gaming", hinglish: "Gaming", available: false },
+  { id: "art", label: "Art", hinglish: "Art & craft", available: false },
+  { id: "beauty", label: "Beauty", hinglish: "Beauty & skincare", available: false },
+  { id: "music", label: "Music", hinglish: "Music", available: false },
+  { id: "lifestyle", label: "Lifestyle", hinglish: "Lifestyle & vlogs", available: false },
+  { id: "family", label: "Family-friendly", hinglish: "Family-friendly", available: false },
 ];
 
 export const CATEGORY_IDS = CATEGORIES.map((c) => c.id);
+/** The niches creators can use today. */
+export const AVAILABLE_CATEGORY_IDS = CATEGORIES.filter((c) => c.available).map((c) => c.id);
 
 export const LANGUAGES = [
   { id: "hinglish", label: "Hinglish" },

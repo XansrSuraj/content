@@ -97,6 +97,30 @@ function hasAlias(padded: string, alias: string): boolean {
   return a.length > 0 && padded.includes(` ${a} `);
 }
 
+/** Unambiguous sport words for headlines ("six", "century", "toss" are too common outside sport). */
+const TREND_SPORT_WORDS =
+  /\b(cricket|cricketer|ipl|wpl|t20i?|odi|test match|wicket|wickets|innings|ranji trophy|asia cup|bcci|icc|world cup|football|footballer|soccer|premier league|epl|la liga|laliga|bundesliga|serie a|ligue 1|champions league|uefa|fifa|isl|hat-?trick|penalty shootout)\b|क्रिकेट|विकेट|फुटबॉल|आईपीएल/i;
+
+/** Other sports, for trend lists only; captions resolve cricket and football. */
+const OTHER_SPORTS =
+  /\b(kabaddi|pro kabaddi|hockey|olympics?|paralympics?|commonwealth games|asian games|asian para games|para games|tennis|wimbledon|us open tennis|grand slam|badminton|formula 1|f1|grand prix|motogp|wwe|ufc|boxing|wrestling|chess olympiad|athletics|javelin|marathon|golf|nba|nfl|sports?)\b|कबड्डी|हॉकी|ओलंपिक|टेनिस|बैडमिंटन|कुश्ती|खेल/i;
+
+/**
+ * Whether a trend title is about sport: a sport word, a strong team/competition alias, a player's
+ * full name, or two weak team names with "vs" ("Ind vs Aus"). A country name alone is not enough.
+ */
+export function isSportsTopic(text: string): boolean {
+  const raw = text.toLowerCase();
+  if (TREND_SPORT_WORDS.test(raw) || OTHER_SPORTS.test(raw)) return true;
+  const padded = ` ${normalizeName(text)} `;
+  if (COMPETITIONS.some((c) => c.aliases.some((a) => hasAlias(padded, a)))) return true;
+  // Headlines need a player's full name ("Virat Kohli"); a lone surname ("Williamson") is too common.
+  if (PLAYERS.some((p) => p.aliases.some((a) => !isWeak(a) && aliasText(a).trim().includes(" ") && hasAlias(padded, a)))) return true;
+  if (TEAMS.some((t) => t.aliases.some((a) => !isWeak(a) && hasAlias(padded, a)))) return true;
+  const weakTeams = new Set(TEAMS.filter((t) => t.aliases.some((a) => isWeak(a) && hasAlias(padded, a))).map((t) => t.name));
+  return weakTeams.size >= 2 && /\b(vs|v|versus)\b|बनाम/i.test(raw);
+}
+
 export function detectLanguage(text: string): "hinglish" | "hindi" | "english" {
   const letters = text.replace(/[^\p{L}]/gu, "");
   const deva = (text.match(/[ऀ-ॿ]/g) ?? []).length;

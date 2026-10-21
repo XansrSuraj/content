@@ -4,7 +4,6 @@ import type { MatchSnapshot, SportsContextUsed } from "@/lib/db/schema";
 import { TEAM_BY_ID, PLAYERS } from "@/lib/domain/sports/entities";
 import { parseSportsIntent, type SportsIntent } from "@/lib/domain/sports/intent";
 import { matchStage, resolveMatch, STAGE_GUIDANCE, writingStage, type MatchRecord, type MatchStage } from "@/lib/domain/sports/resolve";
-import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 import { getMatch, listMatchesFor } from "@/lib/repo/sports";
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -150,5 +149,17 @@ export async function buildSportsContext(
   return { used, notes, trendTerms: `${vs} ${shortVs}`.trim(), intent, match, stage };
 }
 
-
-export const SPORTS_SOURCE_NAME = (provider: string) => SOURCE_NAMES[provider] ?? PROVIDER_LABEL[provider] ?? provider;
+/** Cricket and football fixtures from a few hours ago to `days` ahead (shared provider data plus the creator's own), soonest first. */
+export async function upcomingMatches(db: DB, userId: string, opts: { now?: Date; days?: number; limit?: number } = {}): Promise<MatchSnapshot[]> {
+  const now = opts.now ?? new Date();
+  const range = { from: new Date(now.getTime() - 3 * 3_600_000), to: new Date(now.getTime() + (opts.days ?? 4) * 86_400_000) };
+  const [cricket, football] = await Promise.all([
+    listMatchesFor(db, userId, { sport: "cricket", ...range }),
+    listMatchesFor(db, userId, { sport: "football", ...range }),
+  ]);
+  return [...cricket, ...football]
+    .map((m) => snapshot(m, now))
+    .filter((s) => s.stage !== "cancelled" && s.stage !== "completed")
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .slice(0, opts.limit ?? 12);
+}

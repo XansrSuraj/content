@@ -184,6 +184,30 @@ Keep this file current so work can resume across sessions.
 - **Not built:** Cloudflare Workers/D1. The existing `after()` refresh plus the shared Postgres already gives "fetch per match, generate per creator" at ₹0, and there's no extra account to manage.
 - **Tests:** 136 unit (new `sports.test.ts` and `sports-pipeline.test.ts`), 10/10 E2E (new `e2e/sports.spec.ts`). A real openfootball fixture (Arsenal vs Everton) attaches automatically as "Upcoming · 24 Oct 7:30 pm IST".
 
+## Session 11 (2026-10-21): sports-only product, Gemini, cleanup
+- **AI:** production runs Gemini `gemini-3.5-flash-lite` through the OpenAI-compatible provider (details in docs/tasks/sports-captions-PROGRESS.md). The badge now says "Hosted AI", not "Open-source AI".
+- **Sports only:**
+  - Sports is the only selectable niche; every other niche shows as "Coming soon" (onboarding, settings).
+  - Profiles always save `["sports"]`. The Ideas feed (and Home) only shows ideas tagged `sports`, and the Ideas category filter is gone.
+- **Trending now:**
+  - New "Upcoming matches" section with fixtures from OpenLigaDB/openfootball, each with a one-click caption link.
+  - Google Trends, Wikipedia, Podcasts, Bluesky and Mastodon items are filtered by `isSportsTopic` (`src/lib/domain/sports/intent.ts`). Non-sports items are counted ("N other trends left out").
+  - The Apple Music songs section was removed. Ingestion stays, because captions' evidence can still use it after relevance gates.
+- **`isSportsTopic` rules:**
+  - Counts as sports: unambiguous sport words, strong team/competition aliases, a player's full name, or two weak team names with "vs".
+  - Does not count: a country name alone, or a lone surname ("Williamson", "माही").
+  - Checked on live Google Trends and Wikipedia titles.
+- **Home:** upcoming matches first; ideas only when there are any.
+- **Demo data:**
+  - Seven sports ideas plus a gully-cricket example conversation. All are generic: no real people, scores or news.
+  - Old demo ideas are archived, not deleted, on reseed. The reseed also runs when the fixture list changes.
+- **Copy:** landing page, Caption Studio starters and placeholder, and brief audience hints are sports examples in all 3 languages.
+- **Cleanup:**
+  - Removed unused code: `findTrendContext`, `applyDemoProfile`, `CONFIDENCE_COPY`, `NOT_VERIFIED_NOTICE`, `CaptionModelOutput`, `usageSince`, `topSongs`, `SPORTS_SOURCE_NAME`, plus unused i18n keys.
+  - Removed the Next.js boilerplate SVGs from `public/`, and local logs, screenshots and test results.
+  - Database tables are untouched (migrations stay additive).
+- **Tests:** 250 unit (new `sports-topic.test.ts`, `sports-only.test.ts`); E2E 12 passed, 1 skipped.
+
 ## Next steps
 - Optional free keys for live status: `CRICAPI_KEY` (cricketdata.org) and `FOOTBALL_DATA_TOKEN` (football-data.org).
 - Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.

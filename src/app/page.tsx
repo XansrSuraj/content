@@ -85,7 +85,7 @@ export default async function Landing() {
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-xs text-muted">#MobileFilmmaking #BudgetPhone · {L.previewTags}</p>
+            <p className="mt-3 text-xs text-muted">#MatchPreview #DerbyDay · {L.previewTags}</p>
           </Card>
         </section>
 

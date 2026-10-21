@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppleMusicTopConnector } from "@/lib/providers/trends/apple-music";
 import { SourceFetchError } from "@/lib/providers/trends/types";
 import { runIngestion } from "@/lib/jobs/ingest";
-import { topSongs } from "@/lib/services/trend-context";
+import { latestBatch } from "@/lib/services/trend-context";
 import { createTestDb } from "./helpers";
 
 const now = new Date("2026-10-20T12:30:00Z");
@@ -45,12 +45,12 @@ describe("Apple Music India chart", () => {
     await expect(new AppleMusicTopConnector("UA").fetch(AbortSignal.timeout(1000), now)).rejects.toMatchObject({ retryable: true });
   });
 
-  it("stores a batch that topSongs returns in order", async () => {
+  it("stores a batch that latestBatch returns in order", async () => {
     const db = await createTestDb();
     stubFetch(FEED);
     const res = await runIngestion(db, new AppleMusicTopConnector("UA"), { trigger: "test", now });
     expect(res).toMatchObject({ status: "success", itemsNew: 2 });
-    const songs = await topSongs(db);
+    const songs = await latestBatch(db, "apple_music_top_in");
     expect(songs.map((s) => s.title)).toEqual(["Song One — Artist A", "दूसरा गाना — Artist B"]);
   });
 });

@@ -94,8 +94,6 @@ export const CaptionModelOutputSchema = z.object({
   improvements: z.array(z.string()).describe("Concise list of what was improved and why."),
   limitations: z.array(z.string()).describe("Important caveats, e.g. facts that need checking. Empty if none."),
 });
-export type CaptionModelOutput = z.infer<typeof CaptionModelOutputSchema>;
-
 // ---------- Validated result stored and rendered ----------
 
 const tagSchema = z

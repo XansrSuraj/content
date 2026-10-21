@@ -12,10 +12,10 @@ const TEAM_GROUPS = [
   { key: "football", teams: TEAMS.filter((t) => t.sport === "football") },
 ];
 
-function Chip({ name, value, label, checked, note }: { name: string; value: string; label: string; checked: boolean; note?: string }) {
+function Chip({ name, value, label, checked, note, disabled }: { name: string; value: string; label: string; checked: boolean; note?: string; disabled?: boolean }) {
   return (
-    <label className="cursor-pointer">
-      <input type="checkbox" name={name} value={value} defaultChecked={checked} className="peer sr-only" />
+    <label className={disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}>
+      <input type="checkbox" name={name} value={value} defaultChecked={checked} disabled={disabled} className="peer sr-only" />
       <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-3 py-1.5 text-sm transition-colors hover:border-brand/60 peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand-ink peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--focus)]">
         {label}
         {note && <span className="text-[10px] font-semibold uppercase text-muted">{note}</span>}
@@ -44,8 +44,10 @@ export function ProfileFields({ profile, d, defaultUiLanguage }: { profile: Prof
               name="categories"
               value={c.id}
               label={o.categories[c.id] ?? c.label}
-              checked={p?.categories.includes(c.id) ?? false}
-              note={c.focus ? undefined : d.profile.early}
+              // Sports is the only niche today, so it is always on; the rest are "coming soon".
+              checked={c.available}
+              disabled={!c.available}
+              note={c.available ? undefined : d.profile.comingSoon}
             />
           ))}
         </div>

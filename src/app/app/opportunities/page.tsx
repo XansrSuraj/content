@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { config } from "@/lib/config";
-import { CATEGORIES, LANGUAGES, REGIONS } from "@/lib/domain/options";
+import { LANGUAGES, REGIONS } from "@/lib/domain/options";
 import { PLATFORMS } from "@/lib/domain/platforms";
 import { getFeed, type FeedItem } from "@/lib/services/discovery";
 import { providerStatus } from "@/lib/services/status";
@@ -25,7 +25,6 @@ export default async function OpportunitiesPage(props: PageProps<"/app/opportuni
   const db = await getDb();
   const filters = {
     q: str(sp.q)?.slice(0, 100),
-    category: str(sp.category),
     language: str(sp.language),
     region: str(sp.region),
     platform: str(sp.platform),
@@ -53,22 +52,11 @@ export default async function OpportunitiesPage(props: PageProps<"/app/opportuni
         </Notice>
       ) : null}
 
-      <form className="mb-6 grid gap-2 rounded-xl border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-7" role="search">
+      <form className="mb-6 grid gap-2 rounded-xl border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-6" role="search">
         <label className="sr-only" htmlFor="f-q">
           {t.search}
         </label>
         <Input id="f-q" name="q" placeholder={t.search} defaultValue={filters.q} className="lg:col-span-2" />
-        <label className="sr-only" htmlFor="f-cat">
-          {t.allCategories}
-        </label>
-        <Select id="f-cat" name="category" defaultValue={filters.category ?? ""}>
-          <option value="">{t.allCategories}</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.id} value={c.id}>
-              {d.options.categories[c.id] ?? c.label}
-            </option>
-          ))}
-        </Select>
         <label className="sr-only" htmlFor="f-lang">
           {t.anyLanguage}
         </label>

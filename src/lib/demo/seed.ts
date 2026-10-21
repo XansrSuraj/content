@@ -1,10 +1,9 @@
-import { and, eq, max } from "drizzle-orm";
+import { and, eq, max, notInArray } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
 import { opportunities, opportunityEvidence, sourceObservations, users } from "@/lib/db/schema";
 import { DEFAULT_CONTEXT } from "@/lib/domain/captions";
 import { evidenceConfidence } from "@/lib/domain/opportunities";
 import { addMessage, createConversation } from "@/lib/repo/studio";
-import { upsertProfile } from "@/lib/repo/creator";
 import { DEMO_EXAMPLE_INPUT, DEMO_EXAMPLE_RESULT, DEMO_OPPORTUNITIES } from "./fixtures";
 
 const RESEED_AFTER_HOURS = 24;
@@ -19,12 +18,23 @@ export async function ensureDemoCatalog(db: DB, now: Date = new Date()): Promise
     .select({ at: max(sourceObservations.retrievedAt) })
     .from(sourceObservations)
     .where(eq(sourceObservations.isDemo, true));
-  const existing = await db.select({ id: opportunities.id }).from(opportunities).where(eq(opportunities.isDemo, true)).limit(1);
+  const existing = await db
+    .select({ id: opportunities.id })
+    .from(opportunities)
+    .where(and(eq(opportunities.isDemo, true), eq(opportunities.status, "published")));
+  const ids = DEMO_OPPORTUNITIES.map((o) => o.id);
+  // Reseed when stale or when the fixture list changed (e.g. older non-sports demo ideas are still published).
+  const sameSet = existing.length === ids.length && existing.every((e) => ids.includes(e.id));
   const fresh = latest?.at && now.getTime() - new Date(latest.at).getTime() < RESEED_AFTER_HOURS * 3_600_000;
-  if (existing.length && fresh) return;
+  if (sameSet && fresh) return;
 
   await db.transaction(async (tx) => {
     await tx.delete(sourceObservations).where(eq(sourceObservations.isDemo, true));
+    // Demo ideas dropped from the fixtures are archived, not deleted, so saved references stay valid.
+    await tx
+      .update(opportunities)
+      .set({ status: "archived" })
+      .where(and(eq(opportunities.isDemo, true), notInArray(opportunities.id, ids)));
     for (const o of DEMO_OPPORTUNITIES) {
       const obsRows = o.observations.map((ob, i) => ({
         sourceKey: "demo_sample",
@@ -85,24 +95,13 @@ export async function createDemoUser(db: DB): Promise<string> {
     .returning();
   await ensureDemoCatalog(db);
   const conv = await createConversation(db, user.id, {
-    title: "Example: budget phone cinematic reel",
+    title: "Example: gully cricket last-ball six",
     context: { ...DEFAULT_CONTEXT, platform: "instagram_reels", language: "hinglish" },
     isExample: true,
   });
   await addMessage(db, user.id, conv.id, { role: "user", text: DEMO_EXAMPLE_INPUT });
   await addMessage(db, user.id, conv.id, { role: "assistant", text: "", result: DEMO_EXAMPLE_RESULT, mode: "example" });
   return user.id;
-}
-
-/** Demo profile defaults, applied when a demo user skips onboarding. */
-export async function applyDemoProfile(db: DB, userId: string) {
-  await upsertProfile(db, userId, {
-    displayName: "Demo creator",
-    categories: ["tech", "education"],
-    platforms: ["instagram_reels", "youtube_shorts"],
-    contentLanguages: ["hinglish"],
-    onboardedAt: new Date(),
-  });
 }
 
 export async function cleanupOldDemoUsers(db: DB, olderThanDays = 3): Promise<number> {

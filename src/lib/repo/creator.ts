@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db/client";
 import {
   briefs,
@@ -106,14 +106,6 @@ export async function listFeedback(db: DB, userId: string, targetType?: Feedback
 
 export async function recordUsage(db: DB, row: typeof usageRecords.$inferInsert): Promise<void> {
   await db.insert(usageRecords).values(row);
-}
-
-export async function usageSince(db: DB, userId: string, since: Date) {
-  const rows = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(usageRecords)
-    .where(and(eq(usageRecords.userId, userId), gte(usageRecords.createdAt, since)));
-  return Number(rows[0]?.n ?? 0);
 }
 
 // ---------- Deletion ----------

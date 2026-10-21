@@ -194,7 +194,7 @@ export class TemplateBriefProvider implements BriefProvider {
       originalAngle: req.angle
         ? `Your chosen angle: ${req.angle}`
         : `[Write your own angle on "${req.topic}": what do YOU know or have experienced about it?]`,
-      intendedAudience: "[Who exactly is this for? e.g. first-time phone buyers in tier-2 cities]",
+      intendedAudience: "[Who exactly is this for? e.g. cricket fans in tier-2 cities]",
       hooks: [
         `[Start with the most surprising true thing about ${req.topic}]`,
         "[Start with a relatable problem your audience has]",

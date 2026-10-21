@@ -43,7 +43,8 @@ export interface FeedItem {
 export async function getFeed(db: DB, user: SessionUser, filters: Omit<OpportunityFilters, "dataset"> & { dataset?: string; fresh?: string }) {
   const dataset = resolveDataset(user, filters.dataset);
   const [profile, useFeedback] = await Promise.all([getProfile(db, user.id), personalizationAllowed(db, user.id)]);
-  const items = await listOpportunities(db, { ...filters, dataset });
+  // Sports-only product: other niches are "coming soon", so their ideas stay out of every feed.
+  const items = await listOpportunities(db, { ...filters, category: "sports", dataset });
   const evidence = await evidenceFor(db, items.map((i) => i.id));
 
   const rejected = useFeedback ? await listFeedback(db, user.id, "opportunity") : [];

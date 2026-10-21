@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
+import { and, desc, eq, gte, or } from "drizzle-orm";
 import { config } from "@/lib/config";
 import type { DB } from "@/lib/db/client";
 import { sourceObservations, sources, type TrendContextItem } from "@/lib/db/schema";
@@ -6,16 +6,13 @@ import { INGESTIBLE_KEYS, buildConnector, runIngestion } from "@/lib/jobs/ingest
 import { SOURCE_NAMES } from "@/lib/providers/trends/catalog";
 import { STOPWORDS } from "@/lib/providers/ai/template";
 import { needsReview } from "@/lib/providers/trends/filters";
+import { isSportsTopic } from "@/lib/domain/sports/intent";
 
 /**
- * Finds fresh trend observations that genuinely relate to a caption, so the
- * model can use them as labeled context. Only search-interest / reading-interest
- * sources are used (Google Trends RSS, Wikipedia) — never presented as social
- * virality. YouTube API data is excluded from prompts on purpose.
+ * Trend observations for the "Trending now" page and caption context: freshness-bounded,
+ * safety-filtered and (on the page) sports-only. Never presented as social virality.
  */
 
-const CONTEXT_SOURCES = ["google_trends_rss_in", "wikimedia_top_in"];
-const DEMO_SOURCES = ["demo_sample"];
 const MAX_AGE_HOURS = 48;
 const WIKI_LIMIT = 24;
 
@@ -134,25 +131,6 @@ export async function refreshIfStale(
   await Promise.all(jobs);
 }
 
-export async function findTrendContext(db: DB, text: string, opts: { includeDemo: boolean; now?: Date }): Promise<TrendContextItem[]> {
-  const now = opts.now ?? new Date();
-  const since = new Date(now.getTime() - MAX_AGE_HOURS * 3_600_000);
-  const keys = opts.includeDemo ? [...CONTEXT_SOURCES, ...DEMO_SOURCES] : CONTEXT_SOURCES;
-  const rows = await db
-    .select()
-    .from(sourceObservations)
-    .where(
-      and(
-        inArray(sourceObservations.sourceKey, keys),
-        gte(sourceObservations.observedAt, since),
-        opts.includeDemo ? undefined : eq(sourceObservations.isDemo, false),
-      ),
-    )
-    .orderBy(desc(sourceObservations.observedAt))
-    .limit(400);
-  return matchTrends(text, rows.filter((r) => !needsReview(r.title)));
-}
-
 /** How trend context is described to the model: data, clearly scoped, no virality claims. */
 export function trendContextNotes(items: TrendContextItem[]): string[] {
   return items.map(
@@ -176,7 +154,8 @@ export interface TrendingNowItem {
 }
 
 /** Fresh real observations for the "Trending now" page, newest first, one row per title. */
-export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ items: TrendingNowItem[]; hidden: number }> {
+/** Sports-only product: non-sports titles are left out and counted (`otherTopics`). */
+export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ items: TrendingNowItem[]; hidden: number; otherTopics: number }> {
   // Last-known-good data only: refreshes run in the background (app layout + scheduled job), never in this request.
   const since = new Date(now.getTime() - MAX_AGE_HOURS * 3_600_000);
   const rows = await db
@@ -197,12 +176,17 @@ export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ ite
   const seen = new Set<string>();
   const items: TrendingNowItem[] = [];
   let hidden = 0;
+  let otherTopics = 0;
   for (const r of rows) {
     const key = `${r.sourceKey}|${r.title.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     if (needsReview(r.title)) {
       hidden++;
+      continue;
+    }
+    if (!isSportsTopic(r.title)) {
+      otherTopics++;
       continue;
     }
     items.push({
@@ -225,7 +209,7 @@ export async function trendingNow(db: DB, now: Date = new Date()): Promise<{ ite
     .filter((i) => i.sourceKey === "wikimedia_top_in")
     .sort((a, b) => b.observedAt.getTime() - a.observedAt.getTime() || (a.rank ?? 999) - (b.rank ?? 999))
     .slice(0, WIKI_LIMIT);
-  return { items: [...google, ...wiki], hidden };
+  return { items: [...google, ...wiki], hidden, otherTopics };
 }
 
 export interface TopSong {
@@ -236,17 +220,12 @@ export interface TopSong {
   observedAt: Date;
 }
 
-/** The latest Apple Music India chart that was fetched (one batch, in chart order). */
-export function topSongs(db: DB, limit = 20): Promise<BatchItem[]> {
-  return latestBatch(db, "apple_music_top_in", limit);
-}
-
 export interface BatchItem extends TopSong {
   metric: string | null;
 }
 
-/** The most recent fetch of one source, in its own rank order; sensitive titles are left out. */
-export async function latestBatch(db: DB, sourceKey: string, limit = 20): Promise<BatchItem[]> {
+/** The most recent fetch of one source, in its own rank order; sensitive titles (and, with `sportsOnly`, non-sports ones) are left out. */
+export async function latestBatch(db: DB, sourceKey: string, limit = 20, opts: { sportsOnly?: boolean } = {}): Promise<BatchItem[]> {
   const rows = await db
     .select()
     .from(sourceObservations)
@@ -255,7 +234,7 @@ export async function latestBatch(db: DB, sourceKey: string, limit = 20): Promis
     .limit(100);
   const latest = rows[0]?.retrievedAt.getTime();
   return rows
-    .filter((r) => r.retrievedAt.getTime() === latest && !needsReview(r.title))
+    .filter((r) => r.retrievedAt.getTime() === latest && !needsReview(r.title) && (!opts.sportsOnly || isSportsTopic(r.title)))
     .slice(0, limit)
     .map((r) => ({ id: r.id, title: r.title, url: r.url, rank: r.rank, observedAt: r.observedAt, metric: metricText(r.metricName, r.metricValue) }));
 }

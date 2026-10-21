@@ -10,8 +10,6 @@
  *  - "demo":            appears only in clearly labeled demo observations.
  */
 
-export const NOT_VERIFIED_NOTICE = "Relevant hashtag suggestions. Current trend status not verified.";
-
 export function normalizeHashtag(raw: string): string {
   const cleaned = raw
     .trim()

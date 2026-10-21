@@ -25,13 +25,6 @@ export function evidenceConfidence(obs: ObservationLike[]): Confidence {
   return "low";
 }
 
-export const CONFIDENCE_COPY: Record<Confidence, string> = {
-  none: "No source evidence — idea only",
-  low: "Low: one source, one observation",
-  medium: "Medium: repeated observations or two sources",
-  high: "High: two or more sources across multiple days",
-};
-
 export type Freshness =
   | { kind: "no_evidence" }
   | { kind: "fresh"; latest: Date; ageHours: number }
