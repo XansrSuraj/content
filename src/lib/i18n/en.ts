@@ -61,7 +61,7 @@ export const en = {
   status: {
     demo: "Demo mode",
     aiLive: "AI ready",
-    aiOpen: "Open-source AI",
+    aiOpen: "Hosted AI",
     aiLocal: "Local AI (development)",
     aiTemplate: "AI not configured",
     data: {
@@ -74,7 +74,7 @@ export const en = {
   },
   modes: {
     live_ai: "AI",
-    open_model: "Open-source AI",
+    open_model: "Hosted AI",
     local_ai: "Local AI (development)",
     template_preview: "Template preview — not AI",
     example: "Example (pre-written)",
@@ -648,7 +648,7 @@ export const en = {
     aiData: "AI & data sources",
     aiProvider: "AI provider",
     aiLive: (m: string) => `Configured. Model: ${m}`,
-    aiOpen: (m: string, h: string) => `Open-source model ${m} via ${h}. Free tiers have daily limits; when reached, you see a clear “limit reached” message.`,
+    aiOpen: (m: string, h: string) => `AI model ${m} via ${h}. Free tiers have daily limits; when reached, you see a clear “limit reached” message.`,
     aiLocal: (m: string, u: string) => `Ollama model ${m} at ${u}. Runs on this computer for free; quality is lower than the production model.`,
     aiNone: (missing: string) => `Not configured${missing ? ` (missing: ${missing})` : ""}. Caption Studio shows a labeled template preview until an AI provider is set on the server.`,
     sourceStatus: { enabled: "Enabled", needs_config: "Needs configuration", disabled: "Disabled", unavailable: "Not available", demo: "Demo only" } as Record<string, string>,

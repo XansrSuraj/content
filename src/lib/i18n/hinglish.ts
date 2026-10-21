@@ -60,7 +60,7 @@ export const hinglish: Dict = {
   status: {
     demo: "Demo mode",
     aiLive: "AI ready hai",
-    aiOpen: "Open-source AI",
+    aiOpen: "Hosted AI",
     aiLocal: "Local AI (development)",
     aiTemplate: "AI set nahi hai",
     data: {
@@ -73,7 +73,7 @@ export const hinglish: Dict = {
   },
   modes: {
     live_ai: "AI",
-    open_model: "Open-source AI",
+    open_model: "Hosted AI",
     local_ai: "Local AI (development)",
     template_preview: "Template preview — AI nahi",
     example: "Example (pehle se likha hua)",
@@ -647,7 +647,7 @@ export const hinglish: Dict = {
     aiData: "AI & data sources",
     aiProvider: "AI provider",
     aiLive: (m: string) => `Configured. Model: ${m}`,
-    aiOpen: (m: string, h: string) => `Open-source model ${m} (${h} par). Free tier ki daily limit hai; poori hone par saaf “limit reached” message dikhta hai.`,
+    aiOpen: (m: string, h: string) => `AI model ${m} (${h} par). Free tier ki daily limit hai; poori hone par saaf “limit reached” message dikhta hai.`,
     aiLocal: (m: string, u: string) => `Ollama model ${m} (${u}). Is computer par free chalta hai; quality production model se kam hai.`,
     aiNone: (missing: string) => `Configured nahi${missing ? ` (missing: ${missing})` : ""}. Jab tak server par AI provider set nahi hota, Caption Studio labeled template preview dikhata hai.`,
     sourceStatus: { enabled: "On", needs_config: "Setup chahiye", disabled: "Band", unavailable: "Available nahi", demo: "Sirf demo" },

@@ -165,7 +165,7 @@ export function istNowForInput(): string {
 
 const MODE_BADGE = {
   live_ai: { tone: "ok", text: "Live AI" },
-  open_model: { tone: "ok", text: "Open-source AI" },
+  open_model: { tone: "ok", text: "Hosted AI" },
   local_ai: { tone: "info", text: "Local AI (development)" },
   template_preview: { tone: "warn", text: "Template preview — not AI" },
   example: { tone: "accent", text: "Example (pre-written)" },

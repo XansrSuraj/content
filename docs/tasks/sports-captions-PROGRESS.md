@@ -365,3 +365,24 @@ Only Google and Wikipedia are given to the caption model; the rest are display-o
   - The earlier run 3 (11/13 OK) remains the full-coverage reference; its fact/duplicate issues are fixed in `09a147b` and covered by unit tests.
   - Reports are in `eval-output/` (gitignored).
 - **Recommended next step:** move to a model with a larger free daily budget, or a paid tier. Gemini works without code changes: `AI_PROVIDER=openai_compatible`, `OPENAI_COMPAT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `OPENAI_COMPAT_MODEL=<flash model>`, `OPENAI_COMPAT_API_KEY`, `OPENAI_COMPAT_HOST_LABEL=Gemini`. Not yet verified (no key).
+
+## Switch to Gemini (2026-10-21)
+- The owner added a Gemini key (`GEMINI_API_KEY` in `.env.deploy`). No code change was needed: Gemini runs through the existing OpenAI-compatible provider.
+- **Model choice (local tests on 3 sports cases through the real pipeline):**
+  - `gemini-3.5-flash-lite`: 3/3 OK at ~10 s each.
+  - `gemini-3.8-flash`: 503 overloaded and 60 s timeouts.
+  - `gemini-3.5-flash`: 2/3 (one 503).
+  - `gemini-2.5-flash`: listed by the native API but 404 on the OpenAI-compatible endpoint.
+- **Render env set via API** (values not shown): `AI_PROVIDER=openai_compatible`, `OPENAI_COMPAT_API_KEY` (Gemini key), `OPENAI_COMPAT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `OPENAI_COMPAT_MODEL=gemini-3.5-flash-lite`, `OPENAI_COMPAT_HOST_LABEL=Gemini`, `OPENAI_COMPAT_REASONING_EFFORT=low`.
+  - Rollback to Groq: set `AI_PROVIDER=groq`, `OPENAI_COMPAT_MODEL=openai/gpt-oss-20b`, the Groq key, and remove the BASE_URL/HOST_LABEL/REASONING_EFFORT overrides.
+- **VERIFIED LIVE (2026-10-21 10:46 IST):**
+  - `/api/health` reports `gemini-3.5-flash-lite`.
+  - A sports caption on production returned in 10.7 s with the right fixture (Bayern vs Arsenal, UCL, OpenLigaDB).
+  - The throwaway account was deleted.
+- **Fixes found on Gemini:**
+  - The validator now flags words in another script (a Bengali word appeared in a Hindi caption).
+  - The "Open-source AI" badge is now "Hosted AI", because Gemini is not open-source.
+- **Open:**
+  - Gemini dropped a player the creator named (Kane), saying he was "not in evidence". The prompt should say the creator's own names are allowed.
+  - Gemini free-tier limits are not shown in response headers; check them in AI Studio.
+  - Free-tier content may be used by Google to improve its products (per Google's terms); the owner should review this.

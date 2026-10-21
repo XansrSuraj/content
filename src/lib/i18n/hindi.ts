@@ -60,7 +60,7 @@ export const hindi: Dict = {
   status: {
     demo: "डेमो मोड",
     aiLive: "AI तैयार है",
-    aiOpen: "ओपन-सोर्स AI",
+    aiOpen: "होस्टेड AI",
     aiLocal: "लोकल AI (डेवलपमेंट)",
     aiTemplate: "AI सेट नहीं है",
     data: {
@@ -73,7 +73,7 @@ export const hindi: Dict = {
   },
   modes: {
     live_ai: "AI",
-    open_model: "ओपन-सोर्स AI",
+    open_model: "होस्टेड AI",
     local_ai: "लोकल AI (डेवलपमेंट)",
     template_preview: "टेम्पलेट प्रीव्यू — AI नहीं",
     example: "उदाहरण (पहले से लिखा हुआ)",
@@ -647,7 +647,7 @@ export const hindi: Dict = {
     aiData: "AI और डेटा स्रोत",
     aiProvider: "AI प्रोवाइडर",
     aiLive: (m: string) => `सेट है। मॉडल: ${m}`,
-    aiOpen: (m: string, h: string) => `ओपन-सोर्स मॉडल ${m} (${h} पर)। मुफ़्त प्लान की रोज़ की सीमा है; पूरी होने पर साफ़ “सीमा पूरी हुई” संदेश दिखता है।`,
+    aiOpen: (m: string, h: string) => `AI मॉडल ${m} (${h} पर)। मुफ़्त प्लान की रोज़ की सीमा है; पूरी होने पर साफ़ “सीमा पूरी हुई” संदेश दिखता है।`,
     aiLocal: (m: string, u: string) => `Ollama मॉडल ${m} (${u})। इस कंप्यूटर पर मुफ़्त चलता है; गुणवत्ता प्रोडक्शन मॉडल से कम है।`,
     aiNone: (missing: string) => `सेट नहीं है${missing ? ` (कमी: ${missing})` : ""}। जब तक सर्वर पर AI प्रोवाइडर सेट नहीं होता, कैप्शन स्टूडियो लेबल किया हुआ टेम्पलेट प्रीव्यू दिखाता है।`,
     sourceStatus: { enabled: "चालू", needs_config: "सेटअप चाहिए", disabled: "बंद", unavailable: "उपलब्ध नहीं", demo: "सिर्फ़ डेमो" },
