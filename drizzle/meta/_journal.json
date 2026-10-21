@@ -50,6 +50,13 @@
       "when": 1792523107143,
       "tag": "0006_source_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792570932718,
+      "tag": "0007_sports_standings",
+      "breakpoints": true
     }
   ]
 }

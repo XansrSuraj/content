@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { getProfile } from "@/lib/repo/creator";
@@ -25,15 +25,14 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   after(() => refreshIfStale(db, new Date(), undefined, 20_000, 2).catch(() => undefined));
   after(() => refreshSportsIfStale(db).catch(() => undefined));
 
+  // Five places a sports creator needs; Ideas, Briefs and Published stay reachable by link but are off the menu.
   const items: NavItem[] = [
     { href: "/app", label: n.home, icon: "home", mobile: true },
     { href: "/app/caption-studio", label: n.studio, short: n.studioShort, icon: "studio", mobile: true },
-    { href: "/app/trending", label: n.trending, short: n.trendingShort, icon: "trending", mobile: true },
-    { href: "/app/opportunities", label: n.ideas, icon: "ideas", mobile: true },
-    { href: "/app/briefs", label: n.briefs, icon: "briefs", mobile: true },
-    { href: "/app/saved", label: n.saved, icon: "saved" },
-    { href: "/app/published", label: n.published, icon: "published" },
-    { href: "/app/settings", label: n.settings, icon: "settings", mobile: true },
+    { href: "/app/trending", label: n.matches, short: n.matchesShort, icon: "matches", mobile: true },
+    { href: "/app/graphics", label: n.graphics, icon: "graphics", mobile: true },
+    { href: "/app/saved", label: n.saved, icon: "saved", mobile: true },
+    { href: "/app/settings", label: n.settings, icon: "settings" },
   ];
   if (user.role === "admin" && !user.isDemo) items.push({ href: "/admin", label: n.admin, icon: "admin" });
 
@@ -107,6 +106,9 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
               </div>
             </details>
             <LanguageSwitcher compact />
+            <Link href="/app/settings" aria-label={n.settings} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-fg md:hidden">
+              <Settings aria-hidden className="h-4 w-4" />
+            </Link>
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>

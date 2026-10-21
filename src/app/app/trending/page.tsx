@@ -4,6 +4,9 @@ import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { upcomingMatches } from "@/lib/services/sports-context";
 import { MatchCards } from "@/components/match-cards";
+import { StandingsTable } from "@/components/standings-table";
+import { listStandings } from "@/lib/repo/standings";
+import { STANDINGS_CODES } from "@/lib/providers/sports/connectors";
 import { config } from "@/lib/config";
 import { sourceStatus } from "@/lib/providers/trends/catalog";
 import { latestBatch, trendingNow, type BatchItem } from "@/lib/services/trend-context";
@@ -21,7 +24,8 @@ export default async function TrendingNowPage() {
   const cfg = config();
   const google = sourceStatus("google_trends_rss_in", cfg).status === "enabled";
   const wiki = sourceStatus("wikimedia_top_in", cfg).status === "enabled";
-  const [{ items, hidden, otherTopics }, matches, { lang, d }] = await Promise.all([trendingNow(db), upcomingMatches(db, user.id), getServerDict()]);
+  const [{ items, hidden, otherTopics }, matches, tables, { lang, d }] = await Promise.all([trendingNow(db), upcomingMatches(db, user.id), listStandings(db, STANDINGS_CODES), getServerDict()]);
+  tables.sort((a, b) => STANDINGS_CODES.indexOf(a.competitionCode as (typeof STANDINGS_CODES)[number]) - STANDINGS_CODES.indexOf(b.competitionCode as (typeof STANDINGS_CODES)[number]));
   const podcastsOn = sourceStatus("apple_podcasts_top_in", cfg).status === "enabled";
   const youtubeOn = sourceStatus("youtube_most_popular_in", cfg).status === "enabled";
   const blueskyOn = sourceStatus("bluesky_trends", cfg).status === "enabled";
@@ -53,9 +57,29 @@ export default async function TrendingNowPage() {
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-muted">{t.matchesLead}</p>
         <div className="mt-4">
-          {matches.length ? <MatchCards matches={matches} captionLabel={t.matchCaption} /> : <p className="text-sm text-muted">{t.matchesEmpty}</p>}
+          {matches.length ? <MatchCards matches={matches} planLabel={d.matchPlan.openPlan} captionLabel={d.matchPlan.writeCaption} /> : <p className="text-sm text-muted">{t.matchesEmpty}</p>}
         </div>
       </section>
+
+      {tables.length > 0 && (
+        <section className="mb-10" aria-labelledby="tables-title">
+          <h2 id="tables-title" className="text-lg font-semibold">
+            {d.standings.title}
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted">{d.standings.lead}</p>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {tables.map((tb, i) => (
+              <details key={tb.competitionCode} open={i < 2} className="rounded-xl border border-line bg-surface p-4">
+                <summary className="cursor-pointer font-semibold">{tb.competitionName}</summary>
+                <div className="mt-3">
+                  <StandingsTable rows={tb.rows} cols={d.standings.cols} />
+                </div>
+                <p className="mt-2 text-xs text-muted">{d.standings.source(formatDateTime(tb.fetchedAt, lang))}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6">
         <div className="min-w-0">

@@ -544,3 +544,31 @@ export const providerUsage = pgTable(
   },
   (t) => [uniqueIndex("provider_usage_window").on(t.provider, t.window)],
 );
+
+// ---------- League tables (shared, from live-status providers) ----------
+
+export interface StandingRow {
+  position: number;
+  team: string;
+  played: number;
+  won: number;
+  draw: number;
+  lost: number;
+  goalDifference: number;
+  points: number;
+}
+
+export const sportsStandings = pgTable(
+  "sports_standings",
+  {
+    id: id(),
+    provider: text("provider").notNull(),
+    competitionCode: text("competition_code").notNull(),
+    competitionId: text("competition_id"),
+    competitionName: text("competition_name").notNull(),
+    season: text("season"),
+    rows: jsonb("rows").$type<StandingRow[]>().notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("standings_provider_comp").on(t.provider, t.competitionCode)],
+);

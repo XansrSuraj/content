@@ -219,7 +219,7 @@ test("trending page is honest about its source", async ({ page }) => {
   await page.getByRole("button", { name: /Skip for now/ }).click();
   await page.waitForURL(/caption-studio/);
   await page.goto("/app/trending");
-  await expect(page.getByRole("heading", { name: "Trending now" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Match Center" })).toBeVisible();
   await expect(page.getByText("not Instagram, YouTube or TikTok")).toBeVisible();
   // Depends on the server env: either the honest "off" state, or real items with the fact-check warning.
   await expect(page.getByText(/No trend source is turned on|Check facts before posting/).first()).toBeVisible();

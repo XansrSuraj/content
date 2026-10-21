@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TEAM_BY_ID, teamIdForName } from "@/lib/domain/sports/entities";
 import type { MatchStatus } from "@/lib/domain/sports/resolve";
+import type { StandingRow } from "@/lib/db/schema";
 import type { MatchUpsert } from "@/lib/repo/sports";
 import { RateLimitedError, SourceFetchError, retryAfterSeconds } from "@/lib/providers/trends/types";
 
@@ -246,7 +247,40 @@ const FootballDataMatch = z.object({
 });
 const FootballDataSchema = z.object({ matches: z.array(FootballDataMatch) });
 
-const FD_COMPETITIONS: Record<string, string> = {
+const FootballDataStandings = z.object({
+  competition: z.object({ name: z.string() }),
+  season: z.object({ startDate: z.string().optional() }).optional(),
+  standings: z.array(
+    z.object({
+      type: z.string(),
+      table: z.array(
+        z.object({
+          position: z.number(),
+          team: z.object({ name: z.string() }),
+          playedGames: z.number(),
+          won: z.number(),
+          draw: z.number(),
+          lost: z.number(),
+          goalDifference: z.number(),
+          points: z.number(),
+        }),
+      ),
+    }),
+  ),
+});
+
+export interface FetchedStandings {
+  competitionCode: string;
+  competitionId: string | null;
+  competitionName: string;
+  season: string | null;
+  rows: StandingRow[];
+}
+
+/** League tables refreshed from football-data.org's free tier (the competitions creators here follow most). */
+export const STANDINGS_CODES = ["PL", "PD", "CL", "BL1", "SA", "FL1"] as const;
+
+export const FD_COMPETITIONS: Record<string, string> = {
   PL: "football:pl", PD: "football:laliga", CL: "football:ucl", BL1: "football:bundesliga", SA: "football:seriea", FL1: "football:ligue1", WC: "football:wc", EC: "football:euro",
 };
 
@@ -309,6 +343,32 @@ export class FootballDataProvider implements MatchProvider {
     const parsed = FootballDataSchema.safeParse(json);
     if (!parsed.success) throw new SourceFetchError("Unexpected football-data.org shape", false);
     return parsed.data.matches.map((m) => fdToUpsert(m, now)).filter((m): m is MatchUpsert => m !== null);
+  }
+
+  /** The league table ("TOTAL" standings) of one competition, e.g. "PL". */
+  async standings(code: string, signal: AbortSignal): Promise<FetchedStandings | null> {
+    const json = await getJson(`https://api.football-data.org/v4/competitions/${encodeURIComponent(code)}/standings`, { signal, headers: { "X-Auth-Token": this.token, Accept: "application/json" } });
+    if (json === null) return null;
+    const parsed = FootballDataStandings.safeParse(json);
+    if (!parsed.success) throw new SourceFetchError("Unexpected football-data.org standings shape", false);
+    const total = parsed.data.standings.find((s) => s.type === "TOTAL");
+    if (!total) return null;
+    return {
+      competitionCode: code,
+      competitionId: FD_COMPETITIONS[code] ?? null,
+      competitionName: parsed.data.competition.name,
+      season: parsed.data.season?.startDate?.slice(0, 4) ?? null,
+      rows: total.table.map((r) => ({
+        position: r.position,
+        team: r.team.name,
+        played: r.playedGames,
+        won: r.won,
+        draw: r.draw,
+        lost: r.lost,
+        goalDifference: r.goalDifference,
+        points: r.points,
+      })),
+    };
   }
 
   async getMatch(providerId: string, signal: AbortSignal, now: Date): Promise<MatchUpsert | null> {

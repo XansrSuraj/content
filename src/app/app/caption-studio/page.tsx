@@ -6,6 +6,7 @@ import { getProfile } from "@/lib/repo/creator";
 import { getConversation, listConversations, listMessages } from "@/lib/repo/studio";
 import { getBrief } from "@/lib/repo/work";
 import { getOpportunity } from "@/lib/repo/discovery";
+import { getMatch } from "@/lib/repo/sports";
 import { BriefContentSchema } from "@/lib/domain/briefs";
 import { hashtagStatusesForMany } from "@/lib/services/captions";
 import { toClientMessage, type ClientMessage } from "@/lib/services/serialize";
@@ -68,6 +69,16 @@ export default async function CaptionStudioPage(props: PageProps<"/app/caption-s
       opportunityId = brief.opportunityId;
       if (isPlatformId(brief.platform)) baseContext.platform = brief.platform;
       prefill = d.studio.prefillBrief(brief.topic, content.data.originalAngle, content.data.hooks[0] ?? "");
+    }
+  }
+
+  // From a match's content plan: pin that fixture so the caption uses its verified time and status.
+  if (!conv && typeof sp.match === "string") {
+    const m = await getMatch(db, user.id, sp.match);
+    if (m) {
+      baseContext.matchId = m.id;
+      const step = typeof sp.step === "string" ? d.matchPlan.steps[sp.step] : undefined;
+      prefill = d.matchPlan.prefill(`${m.homeName} vs ${m.awayName}`, m.competition, step ? `${step.t} — ${step.d}` : d.matchPlan.steps.preview.t);
     }
   }
 

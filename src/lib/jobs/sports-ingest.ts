@@ -17,6 +17,7 @@ import { purgeOldMatches, upsertMatches } from "@/lib/repo/sports";
 import { reserveCalls, usageToday } from "@/lib/repo/provider-usage";
 import { acquireLock, backoffMs, pausedUntil, recordFailure, recordSuccess, releaseLock, retryable } from "./guard";
 import { EXPECTED_DURATION_H } from "@/lib/domain/sports/resolve";
+import { refreshStandingsIfStale } from "./standings";
 import type { Sport } from "@/lib/domain/sports/entities";
 
 export const SPORTS_KEYS = ["openligadb", "openfootball_fixtures", "football_data", "cricapi"] as const;
@@ -153,4 +154,6 @@ export async function refreshSportsIfStale(db: DB, opts: { now?: Date; timeoutMs
       await job.catch(() => undefined);
     }),
   );
+  // League tables share football-data.org's budget; they only refresh when stale (6 h).
+  if (!opts.sport || opts.sport === "football") await refreshStandingsIfStale(db, { now }).catch(() => undefined);
 }

@@ -145,8 +145,8 @@ export function MatchLine({ m }: { m: MatchSnapshot }) {
         </span>
         <Badge tone={STAGE_TONE[m.stage]}>{t.stage[m.stage]}</Badge>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted">
-        <CalendarClock aria-hidden className="h-3 w-3" />
+      <p className="mt-0.5 text-xs text-muted">
+        <CalendarClock aria-hidden className="mr-1 inline h-3 w-3 align-[-2px]" />
         {m.competition} · {t.startsAt(formatDateTime(m.startsAt, lang))}
       </p>
       {m.stage === "completed" && m.resultSummary && <p className="mt-1 text-xs">{m.resultSummary}</p>}

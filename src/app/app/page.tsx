@@ -1,16 +1,13 @@
 import Link from "next/link";
-import { ArrowRight, FileText, PenLine, TrendingUp } from "lucide-react";
+import { ArrowRight, Image as ImageIcon, PenLine, Trophy } from "lucide-react";
 import { getDb } from "@/lib/db/client";
 import { requireUser } from "@/lib/auth/session";
 import { getProfile } from "@/lib/repo/creator";
 import { listConversations } from "@/lib/repo/studio";
-import { listBriefs } from "@/lib/repo/work";
-import { getFeed } from "@/lib/services/discovery";
 import { upcomingMatches } from "@/lib/services/sports-context";
 import { MatchCards } from "@/components/match-cards";
 import { getServerDict } from "@/lib/i18n/server";
-import { Card, EmptyState, LinkButton, formatDate } from "@/components/ui";
-import { OpportunityCard } from "@/components/opportunity-card";
+import { Card, EmptyState, formatDate } from "@/components/ui";
 
 export async function generateMetadata() {
   const { d } = await getServerDict();
@@ -19,18 +16,16 @@ export async function generateMetadata() {
 
 const QUICK = [
   { href: "/app/caption-studio", Icon: PenLine, primary: true },
-  { href: "/app/trending", Icon: TrendingUp, primary: false },
-  { href: "/app/briefs/new", Icon: FileText, primary: false },
+  { href: "/app/trending", Icon: Trophy, primary: false },
+  { href: "/app/graphics", Icon: ImageIcon, primary: false },
 ];
 
 export default async function AppHome() {
   const user = await requireUser();
   const db = await getDb();
-  const [profile, convs, briefs, feed, matches, { lang, d }] = await Promise.all([
+  const [profile, convs, matches, { lang, d }] = await Promise.all([
     getProfile(db, user.id),
     listConversations(db, user.id),
-    listBriefs(db, user.id),
-    getFeed(db, user, {}),
     upcomingMatches(db, user.id, { limit: 3 }),
     getServerDict(),
   ]);
@@ -72,69 +67,30 @@ export default async function AppHome() {
           </Link>
         </div>
         {matches.length ? (
-          <MatchCards matches={matches} captionLabel={d.trending.matchCaption} />
+          <MatchCards matches={matches} planLabel={d.matchPlan.openPlan} captionLabel={d.matchPlan.writeCaption} />
         ) : (
           <EmptyState title={d.trending.matchesTitle}>{d.trending.matchesEmpty}</EmptyState>
         )}
       </section>
 
-      {/* Ideas only appear once there are sports ideas to show. */}
-      {feed.feed.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-end justify-between">
-            <h2 className="text-lg font-semibold">{h.ideasForYou}</h2>
-            <Link href="/app/opportunities" className="text-sm font-semibold text-brand hover:underline">
-              {h.seeAll} →
-            </Link>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {feed.feed.slice(0, 3).map((item) => (
-              <OpportunityCard key={item.opportunity.id} item={item} d={d} lang={lang} />
-            ))}
-          </div>
-        </section>
-      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="p-5">
-          <h2 className="font-semibold">{h.recentCaptions}</h2>
-          {convs.length ? (
-            <ul className="mt-2 divide-y divide-line">
-              {convs.slice(0, 5).map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/app/caption-studio?c=${c.id}`} className="truncate text-sm hover:underline">
-                    {c.title}
-                  </Link>
-                  <span className="shrink-0 text-xs text-muted">{formatDate(c.updatedAt, lang)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-muted">{h.nothingYet}</p>
-          )}
-        </Card>
-        <Card className="p-5">
-          <h2 className="font-semibold">{h.recentBriefs}</h2>
-          {briefs.length ? (
-            <ul className="mt-2 divide-y divide-line">
-              {briefs.slice(0, 5).map((b) => (
-                <li key={b.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/app/briefs/${b.id}`} className="truncate text-sm hover:underline">
-                    {b.topic}
-                  </Link>
-                  <span className="shrink-0 text-xs text-muted">{formatDate(b.createdAt, lang)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="mt-3">
-              <LinkButton href="/app/briefs/new" size="sm" variant="secondary">
-                {h.createBrief}
-              </LinkButton>
-            </div>
-          )}
-        </Card>
-      </div>
+      <Card className="p-5">
+        <h2 className="font-semibold">{h.recentCaptions}</h2>
+        {convs.length ? (
+          <ul className="mt-2 divide-y divide-line">
+            {convs.slice(0, 5).map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
+                <Link href={`/app/caption-studio?c=${c.id}`} className="truncate text-sm hover:underline">
+                  {c.title}
+                </Link>
+                <span className="shrink-0 text-xs text-muted">{formatDate(c.updatedAt, lang)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">{h.nothingYet}</p>
+        )}
+      </Card>
     </div>
   );
 }

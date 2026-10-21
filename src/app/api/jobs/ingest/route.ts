@@ -5,6 +5,8 @@ import { safeEqual } from "@/lib/auth/password";
 import { runAllEnabled } from "@/lib/jobs/ingest";
 import { SPORTS_KEYS, buildSportsConnector, runSportsIngestion } from "@/lib/jobs/sports-ingest";
 import { cleanupOldDemoUsers } from "@/lib/demo/seed";
+import { refreshStandingsIfStale } from "@/lib/jobs/standings";
+import { listStandings } from "@/lib/repo/standings";
 
 export const maxDuration = 120;
 
@@ -26,8 +28,10 @@ export async function POST(req: Request) {
     const c = buildSportsConnector(key, cfg);
     if (c) sports.push(await runSportsIngestion(db, c, { force: url.searchParams.get("force") === "1" }));
   }
+  await refreshStandingsIfStale(db).catch(() => undefined);
+  const standings = (await listStandings(db)).map((s) => ({ competition: s.competitionCode, teams: s.rows.length, fetchedAt: s.fetchedAt }));
   const demoCleaned = await cleanupOldDemoUsers(db);
-  return json({ results, sports, demoCleaned });
+  return json({ results, sports, standings, demoCleaned });
 }
 
 /** Vercel Cron and similar schedulers issue GET with the same Bearer header. */

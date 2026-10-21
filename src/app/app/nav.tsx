@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bookmark, FileText, House, Lightbulb, PenLine, Send, Settings, Shield, TrendingUp, type LucideIcon } from "lucide-react";
+import { Bookmark, House, Image as ImageIcon, PenLine, Settings, Shield, Trophy, type LucideIcon } from "lucide-react";
 import { cx } from "@/components/ui";
 
-export type NavIcon = "home" | "studio" | "trending" | "ideas" | "briefs" | "saved" | "published" | "settings" | "admin";
+export type NavIcon = "home" | "studio" | "matches" | "graphics" | "saved" | "settings" | "admin";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
   home: House,
   studio: PenLine,
-  trending: TrendingUp,
-  ideas: Lightbulb,
-  briefs: FileText,
+  matches: Trophy,
+  graphics: ImageIcon,
   saved: Bookmark,
-  published: Send,
   settings: Settings,
   admin: Shield,
 };

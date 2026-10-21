@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, FileText, MessageSquare, Sparkles, TrendingUp } from "lucide-react";
+import { BadgeCheck, CalendarRange, Image as ImageIcon, MessageSquare, PenLine, Sparkles, Trophy } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { config } from "@/lib/config";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -8,7 +8,7 @@ import { startDemo } from "@/app/actions/auth";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Badge, Button, Card, LinkButton } from "@/components/ui";
 
-const FEATURE_ICONS = [MessageSquare, TrendingUp, FileText];
+const FEATURE_ICONS = [PenLine, Trophy, CalendarRange, ImageIcon];
 
 export default async function Landing() {
   const user = await getCurrentUser();
@@ -89,7 +89,22 @@ export default async function Landing() {
           </Card>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="mb-12" aria-labelledby="steps-title">
+          <h2 id="steps-title" className="text-center text-2xl font-bold tracking-tight">
+            {L.stepsTitle}
+          </h2>
+          <ol className="mt-6 grid gap-4 md:grid-cols-3">
+            {L.steps.map((s, i) => (
+              <li key={s.t} className="rounded-xl border border-line bg-surface p-5">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand text-sm font-bold text-brand-fg">{i + 1}</span>
+                <h3 className="mt-3 font-semibold">{s.t}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted">{s.d}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {L.features.map((f, i) => {
             const Icon = FEATURE_ICONS[i] ?? Sparkles;
             return (

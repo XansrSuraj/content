@@ -223,6 +223,29 @@ Keep this file current so work can resume across sessions.
   - When a live-status provider takes over a row, it also becomes the row's source and supplies the names. Cards now read e.g. "FC Internazionale Milano vs FK Shakhtar Donetsk · Source: football-data.org".
 - **CricAPI: NOT SET.** cricketdata.org rejected the key in `.env.deploy` ("Invalid API Key"); it is not in the usual UUID format. It was left off Render until the owner re-copies it.
 
+## Session 12 (2026-10-21): sports creator suite — Match Center, content plans, graphics, tables
+- **Research:** read the homepages of Content Stadium, Box Out Sports, Predis.ai, Flick and vidIQ (Later's page 404'd).
+  - The best ideas that work without paid platform APIs: match-day graphics generated from fixture data, a single clear input, numbered "how it works" steps, and per-match hashtag sets.
+  - Auto-posting and own-account analytics need Meta/YouTube app approval and OAuth, so they were not built.
+- **Navigation, 8 → 5 places:** Home, Caption Studio, Match Center, Graphics, Saved. Settings sits in the sidebar and as a mobile header icon.
+  - Ideas, Briefs and Published are off the menu and off Home. Their routes and data still exist, so old links keep working.
+- **Match page** (`/app/matches/[id]`):
+  - A content plan of 6 posting moments (preview −24 h, match-day hype −4 h, line-ups −1 h / toss −30 m, live, full time, next-day analysis), with the current one highlighted. Result steps wait for a confirmed result.
+  - Each step opens Caption Studio with that match pinned (`?match=&step=`), so the caption uses the verified time and status.
+  - Also: hashtags built only from the fixture, "Add to calendar" (`.ics` with a reminder 24 h before), "Make a graphic", and both teams' table positions.
+- **Graphics** (`/app/graphics`):
+  - Cards drawn on a canvas in the browser: Match day, Countdown, Who wins? poll, and Full time (the score is typed by the creator, with a warning unless the provider confirmed the result).
+  - Sizes 1:1, 4:5 and 9:16; brand colours and handle saved in localStorage; PNG download. Nothing is uploaded and no team logos are used.
+- **League tables:**
+  - New additive table `sports_standings` (migration `0007_sports_standings`).
+  - `refreshStandingsIfStale` fetches football-data.org TOTAL tables for PL, LaLiga, UCL, Bundesliga, Serie A and Ligue 1 every 6 h, within the shared football-data budget, keeping the last good table on failure.
+  - Shown in Match Center (collapsible) and on match pages, with the source and update time.
+- **Landing:** new hero ("Match day? Post in minutes."), 3 numbered steps, 4 feature cards and a new tagline, in all three languages.
+- **Tests:**
+  - 282 unit (new `content-plan`, `standings`). Vitest is capped at 50% of cores: each test file boots PGlite, and 16 parallel workers were timing tests out.
+  - E2E 13 passed, 1 skipped. New `e2e/match-center.spec.ts`: plan → caption prefill, `.ics`, PNG download, menu, and no mobile overflow.
+  - Local E2E servers need `AUTH_ATTEMPTS_PER_IP_PER_15_MIN=500` after many sign-ups.
+
 ## Next steps
 - Optional free keys for live status: `CRICAPI_KEY` (cricketdata.org) and `FOOTBALL_DATA_TOKEN` (football-data.org).
 - Optional: add a free `YOUTUBE_API_KEY` on Render to enable the YouTube chart.
