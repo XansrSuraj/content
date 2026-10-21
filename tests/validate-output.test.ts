@@ -154,3 +154,11 @@ describe("eval-found gaps", () => {
     expect(codes(resultWith("instagram_reels", { caption: "RCB vs MI kal! Aapka prediction kya hai?", same: true }))).toContain("duplicate_option");
   });
 });
+
+describe("script slips", () => {
+  it("flags a word in another script inside a Hindi caption", () => {
+    const hindi = ctx({ language: "hindi", sourceText: "आरसीबी और एमआई का कल का मैच" });
+    expect(codes(resultWith("instagram_reels", { caption: "क्या ये आरसीबी की सबसे बेहतरीन পারফরম্যান্স थी?" }), hindi)).toContain("language_mix");
+    expect(codes(resultWith("instagram_reels", { caption: "क्या ये आरसीबी की सबसे बेहतरीन परफॉर्मेंस थी?" }), hindi)).not.toContain("language_mix");
+  });
+});

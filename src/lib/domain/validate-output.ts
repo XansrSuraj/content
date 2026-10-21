@@ -63,6 +63,8 @@ const EXPERIENCE: RegExp[] = [/\b(i was at the stadium|stadium mein (tha|thi|the
 const FUTURE_START = /\b(will start|starts at|starting at|kicks off at|start hoga|shuru hoga|hone wala hai|hone wali hai|kal hoga|aaj hoga|kal khelenge|kal khela jayega)\b|शुरू होगा|कल होगा|आज होगा|खेला जाएगा/i;
 
 const DEVA = /[ऀ-ॿ]/;
+/** Other Indic scripts (Bengali … Sinhala), Arabic/Urdu, Cyrillic, Thai and CJK. */
+const OTHER_SCRIPT = /[ঀ-෿؀-ۿЀ-ӿ฀-๿぀-ヿ一-鿿]/;
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const optionMain = (o: ResultOption) => o.caption || o.description || o.title;
@@ -140,6 +142,8 @@ export function validateResult(result: CaptionResult, ctx: ValidationContext): V
           for (const re of EXPERIENCE) if (re.test(s) && !re.test(ctx.sourceText)) push("banned_claim", field, "invents a first-person experience", s);
           if (ctx.language === "hinglish" && DEVA.test(s) && !sourceHasDeva) push("language_mix", field, "Devanagari in a Hinglish output", s);
           if (ctx.language === "hindi" && !DEVA.test(s) && (s.match(/[A-Za-z]{2,}/g) ?? []).length >= 5) push("language_mix", field, "an English sentence in a Hindi output", s);
+          // Models sometimes slip into a neighbouring script (e.g. a Bengali word inside Hindi).
+          if (OTHER_SCRIPT.test(s) && !OTHER_SCRIPT.test(ctx.sourceText)) push("language_mix", field, "a word in another script (not Devanagari or Roman)", s);
         }
       }
       const own = norm(optionMain(o));
